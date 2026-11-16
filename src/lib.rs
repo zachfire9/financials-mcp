@@ -16,7 +16,12 @@
 // (every file is importable), a Rust file is only compiled if a parent module
 // declares it. `pub` lets the binary and the integration tests use it, as
 // `financials_mcp::plan::Plan`.
+pub mod error;
 pub mod plan;
+
+// `pub use` re-exports an item so callers can write `financials_mcp::Error`
+// instead of `financials_mcp::error::Error`.
+pub use error::Error;
 
 /// The package name, read from `Cargo.toml` at compile time.
 ///

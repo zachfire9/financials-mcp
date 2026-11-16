@@ -208,19 +208,22 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 03 — Errors and input checks
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-03-errors-input-checks`
-- **Pull Request:** TBD
+- **Pull Request:** https://github.com/zachfire9/financials-mcp/pull/3
 - **Concept:** Fail early with clear, non-secret messages. financials-api is the real validator; the server only pre-checks the obvious things.
 - **Rust introduced:** `Result<T, E>`, the `?` operator, `enum` error types with `thiserror`, `impl Display`, early returns.
 - **Functionality:**
   - An `Error` enum for the app (invalid plan, configuration, API errors to come).
-  - `Plan::check()` for quick pre-checks: `years` 1–75, at most 30 expenses, at least one item, non-negative amounts.
-  - Error messages name the field at fault and never include amounts.
+  - `Plan::check()` for quick pre-checks mirroring the API's wording: simple `years` 1–75 versus phase fields (mutually exclusive, 0–75, at least one projected year, per-person retirement), at most 30 expenses and no `annualWithdrawalCents` with expenses, at least one item, non-negative amounts.
+  - `Plan::from_json_checked()` parses then checks (a showcase for `?`).
+  - Error messages name the field at fault (`items[0].amountCents`, via `serde_path_to_error`) and never include amounts; serde's value-quoting messages are rewritten.
 - **Tests:**
   - Each pre-check rejects a bad plan with a message naming the field.
   - A valid fixture plan passes.
   - Error messages contain no money values.
+  - Pre-check wording verified against a local financials-api (all rules matched).
+- **Follow-up for Step 07:** one financials-api `400` message (mortgage payment below the first month's interest) includes a cents amount, so passing API errors through must strip values too.
 - **Verification:**
   - `cargo test`
 
@@ -291,6 +294,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
   - Sends `X-Financials-Access-Token` when configured.
   - A 10-second timeout per call.
   - Maps API `400` responses to an `InvalidPlan` error carrying the API's message, `401` to an auth error (with no token in the message), and timeouts and connection failures to clear errors.
+  - Strips values from passed-through API messages (for example the mortgage check quotes the first month's interest in cents), keeping the field and rule.
 - **Tests (wiremock):**
   - A successful projection parses.
   - The access token header is sent only when configured.
