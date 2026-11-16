@@ -172,7 +172,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-01-rust-project-foundation`
-- **Pull Request:** TBD
+- **Pull Request:** https://github.com/zachfire9/financials-mcp/pull/1
 - **Concept:** A Rust project is a Cargo package. Keep `main.rs` thin and put testable logic in a library crate (`lib.rs`).
 - **Rust introduced:** Cargo, `Cargo.toml`, crates, modules, `fn main`, `#[test]`, `cargo fmt` and `cargo clippy`.
 - **Functionality:**
