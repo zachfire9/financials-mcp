@@ -1,0 +1,67 @@
+{
+  "drawdownYears": 30,
+  "annualWithdrawalInflationRateBasisPoints": 250,
+  "people": [
+    { "id": "person-a", "name": "Person A", "savingYears": 8 },
+    { "id": "person-b", "name": "Person B", "savingYears": 11 }
+  ],
+  "gapAnnualWithdrawalCents": 2500000,
+  "expenses": [
+    { "id": "expense-living", "name": "Living costs", "annualAmountCents": 5500000 },
+    {
+      "id": "expense-health",
+      "name": "Healthcare",
+      "annualAmountCents": 1200000,
+      "inflationRateBasisPoints": 500
+    },
+    {
+      "id": "expense-travel",
+      "name": "Travel",
+      "annualAmountCents": 1000000,
+      "fromYear": 1,
+      "toYear": 10
+    }
+  ],
+  "mortgage": {
+    "balanceCents": 30000000,
+    "annualRateBasisPoints": 450,
+    "monthlyPaymentCents": 200000
+  },
+  "items": [
+    {
+      "id": "item-a-401k",
+      "name": "Example 401(k) A",
+      "amountCents": 30000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 700,
+      "drawdownAnnualReturnRateBasisPoints": 500,
+      "annualContributionCents": 2300000,
+      "inflateAnnualContribution": true,
+      "ownerId": "person-a",
+      "sortOrder": 0
+    },
+    {
+      "id": "item-b-ira",
+      "name": "Example IRA B",
+      "amountCents": 12000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 650,
+      "annualContributionCents": 700000,
+      "inflateAnnualContribution": false,
+      "ownerId": "person-b",
+      "sortOrder": 1
+    },
+    {
+      "id": "item-joint-cash",
+      "name": "Example joint savings",
+      "amountCents": 4000000,
+      "currency": "USD",
+      "annualReturnRateBasisPoints": 300,
+      "annualContributionCents": 0,
+      "inflateAnnualContribution": false,
+      "withdrawalPriority": 1,
+      "withdrawalAvailableAfterYear": 0,
+      "sortOrder": 2
+    }
+  ]
+}

@@ -14,3 +14,6 @@ repository = "https://github.com/zachfire9/financials-mcp"
 publish = false
 
 [dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+

@@ -189,19 +189,19 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 02 — Plan model with serde
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-02-plan-model-serde`
 - **Pull Request:** TBD
 - **Concept:** The plan is the API's projection request. Mirror it exactly in Rust types so there's no translation layer to drift.
 - **Rust introduced:** structs, `derive`, `serde` and `serde_json`, `#[serde(rename_all = "camelCase")]`, `Option<T>`, `Vec<T>`, integer types (`i64` for cents, `i32` for basis points).
 - **Functionality:**
   - `Plan`, `ItemInput`, `PersonInput`, `ExpenseInput` and `MortgageInput` types matching `financials-api/internal/projections/projection.go`.
-  - Optional fields stay optional and are omitted when absent (`skip_serializing_if`).
-  - A made-up fixture plan in `tests/fixtures/plan-basic.json`.
+  - Required and optional fields follow the UI's TypeScript request types; optional fields are omitted when absent (`skip_serializing_if`).
+  - Made-up fixture plans in `tests/fixtures/` (`plan-basic.json`, `plan-household.json`), checked against a local financials-api.
 - **Tests:**
   - The fixture deserializes, with the expected values.
   - A plan round-trips (deserialize, then serialize) to equivalent JSON.
-  - Missing optional fields deserialize to `None`; unknown fields are tolerated.
+  - Missing optional fields deserialize to `None` or zero; unknown fields are **rejected**, as the API does, so a misspelled field can't be silently dropped.
   - Field names serialize as camelCase (`annualWithdrawalCents`, not `annual_withdrawal_cents`).
 - **Verification:**
   - `cargo test`
