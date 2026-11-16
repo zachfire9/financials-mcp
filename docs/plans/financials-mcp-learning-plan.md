@@ -210,7 +210,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-03-errors-input-checks`
-- **Pull Request:** TBD
+- **Pull Request:** https://github.com/zachfire9/financials-mcp/pull/3
 - **Concept:** Fail early with clear, non-secret messages. financials-api is the real validator; the server only pre-checks the obvious things.
 - **Rust introduced:** `Result<T, E>`, the `?` operator, `enum` error types with `thiserror`, `impl Display`, early returns.
 - **Functionality:**
@@ -294,6 +294,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
   - Sends `X-Financials-Access-Token` when configured.
   - A 10-second timeout per call.
   - Maps API `400` responses to an `InvalidPlan` error carrying the API's message, `401` to an auth error (with no token in the message), and timeouts and connection failures to clear errors.
+  - Strips values from passed-through API messages (for example the mortgage check quotes the first month's interest in cents), keeping the field and rule.
 - **Tests (wiremock):**
   - A successful projection parses.
   - The access token header is sent only when configured.
