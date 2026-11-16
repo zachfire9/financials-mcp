@@ -11,6 +11,13 @@
 //! Step 01 only sets up the project; the planner tools arrive in later steps
 //! (see `docs/plans/financials-mcp-learning-plan.md`).
 
+// `pub mod plan;` declares a module and tells the compiler to load it from
+// `src/plan.rs`. Unlike Go (every file in a folder is one package) or Python
+// (every file is importable), a Rust file is only compiled if a parent module
+// declares it. `pub` lets the binary and the integration tests use it, as
+// `financials_mcp::plan::Plan`.
+pub mod plan;
+
 /// The package name, read from `Cargo.toml` at compile time.
 ///
 /// `env!` is a macro (the `!` marks a macro call) that Cargo fills in during
