@@ -1,0 +1,19 @@
+# Build output (cargo build / cargo test)
+/target/
+
+# Local config and secrets
+.env
+.env.*
+!.env.example
+
+# Real plans and financial data stay local. Committed fixtures live in
+# tests/fixtures/ and are made up.
+/data/
+*.local.json
+financials-plan-*.json
+financials-backup-*.json
+
+# Editor/OS noise
+.DS_Store
+.vscode/
+.idea/

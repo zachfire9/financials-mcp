@@ -1,0 +1,16 @@
+# Cargo.toml is the package manifest: the project's name, version, Rust
+# edition, and (from Step 02 on) its dependencies. `cargo build`, `cargo run`
+# and `cargo test` all read it.
+[package]
+name = "financials-mcp"
+version = "0.1.0"
+edition = "2024"
+# The oldest Rust that can build this crate. Edition 2024 needs 1.85.
+rust-version = "1.85"
+description = "MCP server that lets AI agents run retirement projections through financials-api"
+repository = "https://github.com/zachfire9/financials-mcp"
+# This is an application, not a library for crates.io; this prevents an
+# accidental `cargo publish`.
+publish = false
+
+[dependencies]
