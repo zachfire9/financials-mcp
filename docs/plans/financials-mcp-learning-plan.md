@@ -191,7 +191,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-02-plan-model-serde`
-- **Pull Request:** TBD
+- **Pull Request:** https://github.com/zachfire9/financials-mcp/pull/2
 - **Concept:** The plan is the API's projection request. Mirror it exactly in Rust types so there's no translation layer to drift.
 - **Rust introduced:** structs, `derive`, `serde` and `serde_json`, `#[serde(rename_all = "camelCase")]`, `Option<T>`, `Vec<T>`, integer types (`i64` for cents, `i32` for basis points).
 - **Functionality:**
