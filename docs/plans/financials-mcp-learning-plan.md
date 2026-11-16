@@ -16,6 +16,7 @@ The model chooses which scenarios to try and explains the results; **the financi
   - what code changed
   - what tests were added
   - how it was verified
+- **Every step teaches Rust along the way.** Zach knows Go and Python but is new to Rust, so each PR (and the summary when the step is handed over) includes a short **Rust notes** section: a few specific places in that step's code where a Rust concept shows up, what it does, and how it compares to Go or Python. Code comments explain a concept where it first appears.
 - Zach reviews/approves/merges PRs before the next step is based on `main`.
 - After a PR is created, add the PR link to that step in this plan.
 - On the step branch, mark that step as completed once the step's implementation and tests are done so it will show as completed when the PR is merged into `main`.

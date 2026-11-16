@@ -21,6 +21,7 @@ cargo run
 
 - One branch per step: `step-NN-short-description`. PR title: `Step N: Short step description`.
 - Each PR explains the concept taught, what changed, the tests added, and how it was verified.
+- Each PR also has a **Rust notes** section: a few specific places in that step's code where a Rust concept appears, what it does, and how it compares to Go or Python (the owner knows those, and is new to Rust). Explain a concept in a code comment where it first appears.
 - On the step branch, mark the step completed in the plan and add the PR link.
 - Zach reviews and merges each PR before the next step starts. Don't push to `main` directly.
 
