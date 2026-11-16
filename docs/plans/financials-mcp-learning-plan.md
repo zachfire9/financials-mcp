@@ -170,7 +170,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 01 — Rust project foundation
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-01-rust-project-foundation`
 - **Pull Request:** TBD
 - **Concept:** A Rust project is a Cargo package. Keep `main.rs` thin and put testable logic in a library crate (`lib.rs`).
