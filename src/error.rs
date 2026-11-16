@@ -11,7 +11,7 @@
 //! in model conversations and logs.
 
 /// Everything that can go wrong in this crate. More variants arrive with
-/// later steps (configuration, the API client).
+/// later steps (the API client).
 ///
 /// A Rust `enum` is a *sum type*: an `Error` is exactly one of these variants,
 /// and each variant carries its own fields. Go would use several error types
@@ -37,6 +37,11 @@ pub enum Error {
     /// once. `.problems.join("; ")` is ordinary Rust code inside the message.
     #[error("invalid plan: {}", .problems.join("; "))]
     InvalidPlan { problems: Vec<String> },
+
+    /// A setting is missing, malformed or unsafe. Messages name the variable
+    /// or `.env` line, never a value, since values may include the token.
+    #[error("configuration problem: {problem}")]
+    Config { problem: String },
 }
 
 impl Error {

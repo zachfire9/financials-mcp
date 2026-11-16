@@ -16,6 +16,7 @@
 // (every file is importable), a Rust file is only compiled if a parent module
 // declares it. `pub` lets the binary and the integration tests use it, as
 // `financials_mcp::plan::Plan`.
+pub mod config;
 pub mod error;
 pub mod plan;
 

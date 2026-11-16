@@ -229,7 +229,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 04 — Configuration loading
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-04-configuration-loading`
 - **Pull Request:** TBD
 - **Concept:** Behavior depends on explicit configuration, and secrets must never leak through it.
@@ -237,7 +237,9 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 - **Functionality:**
   - Read `FINANCIALS_API_URL` (default `http://localhost:8080`) and `FINANCIALS_ACCESS_TOKEN` (optional) from the process environment and an optional local `.env` file. The process environment wins, the same as in the other repos.
   - Commit `.env.example` with placeholders only; `.env` is gitignored.
-  - `Debug` and any display of the config show the token as `<redacted>`.
+  - `Debug` and any display of the config show the token as `<redacted>` (an `AccessToken` newtype with a hand-written `Debug` and no `Display`).
+  - `http://` is only accepted for `localhost`/`127.0.0.1`/`[::1]`; other hosts need `https://`, so the token is never sent unencrypted. URLs with embedded credentials are rejected.
+  - `.env` parsing matches financials-api's rules, and errors give line numbers only.
 - **Tests:**
   - Defaults apply when nothing is set.
   - Environment values override `.env` values, which override defaults.
