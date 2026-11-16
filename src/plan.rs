@@ -26,6 +26,13 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::Error;
+
+/// Limits financials-api enforces, mirrored for fast, clear errors.
+/// `const` values are inlined at compile time, like Go's `const`.
+const MAX_YEARS: i32 = 75;
+const MAX_EXPENSES: usize = 30;
+
 /// The inputs to one projection: the financials-api `POST /projections` body.
 ///
 /// Rejecting unknown fields matters: the API rejects them too, and silently
@@ -147,17 +154,168 @@ pub struct MortgageInput {
 }
 
 impl Plan {
-    /// Parses a plan from JSON text.
+    /// Parses a plan from JSON text, without checking its rules.
     ///
-    /// The return type `Result<Plan, serde_json::Error>` is either
-    /// `Ok(plan)` or `Err(error)`: Go's `(Plan, error)` pair as one value.
-    /// Error handling gets its own step (Step 03); for now the caller gets
-    /// serde's error, which names the problem field and its line and column.
+    /// Returns `Ok(plan)`, or an [`Error`] naming *where* the problem is
+    /// (`items[0].amountCents`) but never the value found there.
     ///
     /// `json: &str` *borrows* the text: the function reads it without taking
     /// ownership, so the caller can keep using it afterwards.
-    pub fn from_json(json: &str) -> Result<Plan, serde_json::Error> {
-        serde_json::from_str(json)
+    pub fn from_json(json: &str) -> Result<Plan, Error> {
+        let mut deserializer = serde_json::Deserializer::from_str(json);
+        // `serde_path_to_error` wraps the deserializer to remember the field
+        // path when something fails. `map_err` converts the error type
+        // inside a `Result`, leaving an `Ok` untouched.
+        let plan: Plan = serde_path_to_error::deserialize(&mut deserializer).map_err(|err| {
+            let path = err.path().to_string();
+            Error::from_json_error(&path, err.inner())
+        })?;
+        // `end()` rejects anything after the plan, such as a second object.
+        deserializer
+            .end()
+            .map_err(|err| Error::from_json_error(".", &err))?;
+        Ok(plan)
+    }
+
+    /// Parses a plan and checks its rules: the usual way to load one.
+    ///
+    /// This is what the `?` operator is for. Each `?` means "if this is an
+    /// `Err`, return it from this function right now; otherwise unwrap the
+    /// `Ok` value and carry on." It replaces Go's
+    /// `if err != nil { return nil, err }` with one character.
+    pub fn from_json_checked(json: &str) -> Result<Plan, Error> {
+        let plan = Plan::from_json(json)?;
+        plan.check()?;
+        Ok(plan)
+    }
+
+    /// Quick pre-checks for rules financials-api would reject.
+    ///
+    /// financials-api is the real validator; this only catches the obvious
+    /// problems early, with the same wording the API uses. Rules that need
+    /// the projection engine's details (currency codes, rate ranges, mortgage
+    /// interest, name lengths) are left to the API.
+    ///
+    /// Like the API, it collects every problem rather than stopping at the
+    /// first. `Ok(())` means "succeeded, nothing to return": `()` is Rust's
+    /// empty value, like a function with no return value in Go.
+    pub fn check(&self) -> Result<(), Error> {
+        // `Vec::new()` is an empty growable list, like `[]string{}` in Go.
+        let mut problems: Vec<String> = Vec::new();
+
+        if self.items.is_empty() {
+            problems.push("items are required".to_string());
+        }
+
+        if self.uses_phase_projection() {
+            if self.years != 0 {
+                problems
+                    .push("years and savingYears/drawdownYears are mutually exclusive".to_string());
+            }
+            // `!(0..=MAX_YEARS).contains(&x)` checks that x is outside the
+            // inclusive range 0 to 75. `..=` includes the end; `..` doesn't.
+            if !(0..=MAX_YEARS).contains(&self.saving_years) {
+                problems.push(format!("savingYears must be between 0 and {MAX_YEARS}"));
+            }
+            if !(0..=MAX_YEARS).contains(&self.drawdown_years) {
+                problems.push(format!("drawdownYears must be between 0 and {MAX_YEARS}"));
+            }
+            if !self.people.is_empty() && self.saving_years != 0 {
+                problems.push(
+                    "savingYears must be 0 when people are provided; set savingYears per person"
+                        .to_string(),
+                );
+            }
+            // `.iter().enumerate()` yields `(index, &person)` pairs, like
+            // `for index, person := range people` in Go.
+            for (index, person) in self.people.iter().enumerate() {
+                if !(0..=MAX_YEARS).contains(&person.saving_years) {
+                    problems.push(format!(
+                        "people[{index}].savingYears must be between 0 and {MAX_YEARS}"
+                    ));
+                }
+            }
+            if self.last_retirement_year() + self.drawdown_years < 1 {
+                problems.push(
+                    "savingYears and drawdownYears must include at least one projected year"
+                        .to_string(),
+                );
+            }
+            if self.annual_withdrawal_cents < 0 {
+                problems
+                    .push("annualWithdrawalCents must be greater than or equal to 0".to_string());
+            }
+            if self.gap_annual_withdrawal_cents < 0 {
+                problems.push(
+                    "gapAnnualWithdrawalCents must be greater than or equal to 0".to_string(),
+                );
+            }
+            if !self.expenses.is_empty() && self.annual_withdrawal_cents != 0 {
+                problems
+                    .push("annualWithdrawalCents must be 0 when expenses are provided".to_string());
+            }
+            if self.expenses.len() > MAX_EXPENSES {
+                problems.push(format!(
+                    "expenses can include at most {MAX_EXPENSES} entries"
+                ));
+            }
+            for (index, expense) in self.expenses.iter().enumerate() {
+                if expense.annual_amount_cents < 0 {
+                    problems.push(format!(
+                        "expenses[{index}].annualAmountCents must be greater than or equal to 0"
+                    ));
+                }
+            }
+        } else if !(1..=MAX_YEARS).contains(&self.years) {
+            problems.push(format!("years must be between 1 and {MAX_YEARS}"));
+        }
+
+        for (index, item) in self.items.iter().enumerate() {
+            if item.amount_cents < 0 {
+                problems.push(format!(
+                    "items[{index}].amountCents must be greater than or equal to 0"
+                ));
+            }
+            if item.annual_contribution_cents < 0 {
+                problems.push(format!(
+                    "items[{index}].annualContributionCents must be greater than or equal to 0"
+                ));
+            }
+        }
+
+        if problems.is_empty() {
+            Ok(())
+        } else {
+            // A struct-like enum variant is built with its field names.
+            // `problems` is shorthand for `problems: problems`.
+            Err(Error::InvalidPlan { problems })
+        }
+    }
+
+    /// Whether this plan uses saving/drawdown phases rather than simple
+    /// `years`. Mirrors the API's `usesPhaseProjection`: any phase field set.
+    fn uses_phase_projection(&self) -> bool {
+        self.saving_years != 0
+            || self.drawdown_years != 0
+            || self.annual_withdrawal_cents != 0
+            || self.annual_withdrawal_inflation_rate_basis_points != 0
+            || !self.people.is_empty()
+            || self.gap_annual_withdrawal_cents != 0
+            || !self.expenses.is_empty()
+            || self.mortgage.is_some()
+    }
+
+    /// The year the last person retires (or `saving_years` without people).
+    ///
+    /// An iterator chain: `.map` turns each person into their saving years,
+    /// `.max()` picks the largest and returns an `Option` (there may be no
+    /// people), and `.unwrap_or` supplies the value to use when it's `None`.
+    fn last_retirement_year(&self) -> i32 {
+        self.people
+            .iter()
+            .map(|person| person.saving_years)
+            .max()
+            .unwrap_or(self.saving_years)
     }
 
     /// Serializes the plan to compact JSON, ready to send to the API.
@@ -264,23 +422,201 @@ mod tests {
         );
 
         let err = Plan::from_json(&typo).expect_err("a misspelled field must not be ignored");
-        assert!(err.to_string().contains("anualWithdrawalCents"), "{err}");
+        assert!(
+            err.to_string()
+                .contains("unknown field `anualWithdrawalCents`"),
+            "{err}"
+        );
     }
 
     #[test]
     fn missing_required_fields_are_rejected_by_name() {
         let no_name = MINIMAL.replacen("\"name\": \"Brokerage\",", "", 1);
         let err = Plan::from_json(&no_name).expect_err("an item needs a name");
-        assert!(err.to_string().contains("missing field `name`"), "{err}");
+        assert_eq!(
+            err.to_string(),
+            "plan has a problem at `items[0]`: missing field `name`"
+        );
 
         let err = Plan::from_json("{}").expect_err("a plan needs items");
-        assert!(err.to_string().contains("missing field `items`"), "{err}");
+        assert_eq!(
+            err.to_string(),
+            "plan has a problem at the top level: missing field `items`"
+        );
     }
 
     #[test]
     fn wrong_types_are_rejected() {
         let float_money = MINIMAL.replacen("1000000", "10000.50", 1);
         let err = Plan::from_json(&float_money).expect_err("money must be integer cents");
-        assert!(err.to_string().contains("invalid type"), "{err}");
+        assert_eq!(
+            err.to_string(),
+            "plan has a problem at `items[0].amountCents`: invalid type, expected a whole number (cents or basis points, no decimals)"
+        );
+        // The private value never appears in the error.
+        assert!(!err.to_string().contains("10000"), "{err}");
+    }
+
+    // ---- check(): quick pre-checks --------------------------------------
+
+    /// Parses `MINIMAL` and lets a test change it before checking. `impl
+    /// FnOnce(&mut Plan)` means "any closure that can be called once with a
+    /// mutable plan"; closures are written `|plan| { ... }`.
+    fn minimal_with(change: impl FnOnce(&mut Plan)) -> Plan {
+        let mut plan = Plan::from_json(MINIMAL).unwrap();
+        plan.years = 30;
+        change(&mut plan);
+        plan
+    }
+
+    /// The problems a plan's check reports, or an empty list if it passes.
+    fn problems(plan: &Plan) -> Vec<String> {
+        match plan.check() {
+            Ok(()) => Vec::new(),
+            Err(Error::InvalidPlan { problems }) => problems,
+            Err(other) => panic!("unexpected error kind: {other}"),
+        }
+    }
+
+    #[test]
+    fn a_valid_simple_plan_passes() {
+        assert_eq!(problems(&minimal_with(|_| {})), Vec::<String>::new());
+    }
+
+    #[test]
+    fn simple_years_must_be_between_1_and_75() {
+        for years in [0, 76, -1] {
+            let plan = minimal_with(|plan| plan.years = years);
+            assert_eq!(
+                problems(&plan),
+                ["years must be between 1 and 75"],
+                "years={years}"
+            );
+        }
+    }
+
+    #[test]
+    fn years_and_phase_fields_are_mutually_exclusive() {
+        let plan = minimal_with(|plan| plan.saving_years = 10);
+        assert_eq!(
+            problems(&plan),
+            ["years and savingYears/drawdownYears are mutually exclusive"]
+        );
+    }
+
+    #[test]
+    fn items_are_required() {
+        let plan = minimal_with(|plan| plan.items.clear());
+        assert_eq!(problems(&plan), ["items are required"]);
+    }
+
+    #[test]
+    fn negative_amounts_are_rejected_with_the_field_path() {
+        let plan = minimal_with(|plan| {
+            plan.items[0].amount_cents = -5;
+            plan.items[0].annual_contribution_cents = -1;
+        });
+        assert_eq!(
+            problems(&plan),
+            [
+                "items[0].amountCents must be greater than or equal to 0",
+                "items[0].annualContributionCents must be greater than or equal to 0",
+            ]
+        );
+    }
+
+    #[test]
+    fn phase_plan_rules() {
+        let plan = minimal_with(|plan| {
+            plan.years = 0;
+            plan.saving_years = 80;
+            plan.drawdown_years = 30;
+            plan.annual_withdrawal_cents = 6_000_000;
+            plan.expenses = (0..31)
+                .map(|n| ExpenseInput {
+                    id: String::new(),
+                    name: format!("Expense {n}"),
+                    annual_amount_cents: 100,
+                    inflation_rate_basis_points: None,
+                    from_year: 0,
+                    to_year: 0,
+                    years: 0,
+                })
+                .collect();
+        });
+        assert_eq!(
+            problems(&plan),
+            [
+                "savingYears must be between 0 and 75",
+                "annualWithdrawalCents must be 0 when expenses are provided",
+                "expenses can include at most 30 entries",
+            ]
+        );
+    }
+
+    #[test]
+    fn people_set_saving_years_per_person() {
+        let plan = minimal_with(|plan| {
+            plan.years = 0;
+            plan.saving_years = 10;
+            plan.drawdown_years = 20;
+            plan.annual_withdrawal_cents = 1;
+            plan.people = vec![PersonInput {
+                id: "p1".into(),
+                name: "Person".into(),
+                saving_years: 90,
+            }];
+        });
+        assert_eq!(
+            problems(&plan),
+            [
+                "savingYears must be 0 when people are provided; set savingYears per person",
+                "people[0].savingYears must be between 0 and 75",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_phase_plan_needs_at_least_one_year() {
+        let plan = minimal_with(|plan| {
+            plan.years = 0;
+            plan.annual_withdrawal_inflation_rate_basis_points = 250;
+        });
+        assert_eq!(
+            problems(&plan),
+            ["savingYears and drawdownYears must include at least one projected year"]
+        );
+    }
+
+    #[test]
+    fn check_messages_never_include_amounts() {
+        let plan = minimal_with(|plan| plan.items[0].amount_cents = -987_654);
+        let message = plan.check().unwrap_err().to_string();
+        assert!(!message.contains("987"), "{message}");
+    }
+
+    // ---- from_json / from_json_checked ----------------------------------
+
+    #[test]
+    fn malformed_json_reports_line_and_column_only() {
+        let err = Plan::from_json("{\n  \"items\": [\n").unwrap_err();
+        assert!(matches!(err, Error::InvalidJson { line: 3, .. }), "{err:?}");
+
+        let err = Plan::from_json("{\"items\": []} trailing").unwrap_err();
+        assert!(matches!(err, Error::InvalidJson { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn from_json_checked_parses_then_checks() {
+        // Parses fine but fails a rule: `?` passes the check error through.
+        let err = Plan::from_json_checked(MINIMAL).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "invalid plan: years must be between 1 and 75"
+        );
+
+        // A parse error stops before the check.
+        let err = Plan::from_json_checked("not json").unwrap_err();
+        assert!(matches!(err, Error::InvalidJson { .. }), "{err:?}");
     }
 }

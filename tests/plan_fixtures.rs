@@ -78,3 +78,13 @@ fn fixtures_round_trip_to_equivalent_json() {
         assert_eq!(Plan::from_json(&plan.to_json()).unwrap(), plan);
     }
 }
+
+#[test]
+fn fixtures_pass_the_pre_checks() {
+    for (name, text) in [("basic", BASIC), ("household", HOUSEHOLD)] {
+        // `if let Err(err) = ...` runs only when loading fails.
+        if let Err(err) = Plan::from_json_checked(text) {
+            panic!("{name} fixture should pass the pre-checks: {err}");
+        }
+    }
+}
