@@ -231,7 +231,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-04-configuration-loading`
-- **Pull Request:** TBD
+- **Pull Request:** https://github.com/zachfire9/financials-mcp/pull/4
 - **Concept:** Behavior depends on explicit configuration, and secrets must never leak through it.
 - **Rust introduced:** `std::env`, implementing a trait by hand (`impl fmt::Debug` that redacts the token), constructors (`Config::from_env`), testing with injected values instead of global state.
 - **Functionality:**
