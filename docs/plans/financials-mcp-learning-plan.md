@@ -292,7 +292,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-07-financials-api-client`
-- **Pull Request:** TBD
+- **Pull Request:** https://github.com/zachfire9/financials-mcp/pull/7
 - **Concept:** The real projector calls `POST /projections`, with clear handling for every way an HTTP call can fail.
 - **Rust introduced:** `reqwest`, async/await, `match` on status codes, timeouts, mapping errors into the app's `Error`.
 - **Functionality:**
