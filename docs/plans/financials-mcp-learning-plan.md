@@ -315,7 +315,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-08-projection-debug-command`
-- **Pull Request:** TBD
+- **Pull Request:** https://github.com/zachfire9/financials-mcp/pull/8
 - **Concept:** Exercise the projection path directly before an MCP client drives it, the same way agent-harness's `tool` command let tools be debugged without a model.
 - **Rust introduced:** `clap` derive (subcommands, arguments), reading files, `#[tokio::main]`, exit codes.
 - **Functionality:**
