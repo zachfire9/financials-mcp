@@ -7,7 +7,10 @@ This is a learning project, built one reviewable step at a time. Each step teach
 ## Current status
 
 - **Step 01 (Rust project foundation):** a Cargo package with a thin binary (`src/main.rs`) over a library crate (`src/lib.rs`), unit and integration tests, and CI on Linux and Windows.
-- Running the binary prints a placeholder banner. The planner tools arrive in later steps.
+- **Step 02 (plan model):** `Plan` and friends mirror the financials-api projection request with serde.
+- **Step 03 (errors and pre-checks):** an `Error` enum whose messages name fields but never quote values, plus quick pre-checks in the API's own wording.
+- **Step 04 (configuration):** `Config` loads the API URL and access token from the environment and `.env`, and never prints the token.
+- Running the binary still prints a placeholder banner. The planner tools arrive in later steps.
 
 ## Requirements
 
@@ -20,6 +23,17 @@ winget install Rustlang.Rustup
 # open a new terminal, then:
 rustc --version
 ```
+
+## Configuration
+
+Settings come from the process environment, then a local `.env` file (gitignored), then defaults. Copy `.env.example` to `.env` to start.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `FINANCIALS_API_URL` | `http://localhost:8080` | Base URL of financials-api. `http://` is only allowed for `localhost`; other hosts need `https://`. |
+| `FINANCIALS_ACCESS_TOKEN` | *(none)* | Sent as `X-Financials-Access-Token` when set. Never printed. |
+
+A variable set in the environment wins over `.env`, even when it's empty (empty means "use the default").
 
 ## Commands
 
