@@ -252,7 +252,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-05-projection-summary`
-- **Pull Request:** TBD
+- **Pull Request:** https://github.com/zachfire9/financials-mcp/pull/5
 - **Concept:** Raw projections are large. The agent needs a compact, honest summary (see [Summary shape](#summary-shape)).
 - **Rust introduced:** iterators (`iter`, `find`, `min_by_key`, `map`, `sum`), closures, borrowing (`&Projection`), converting cents to dollars without floating-point surprises.
 - **Functionality:**
