@@ -250,15 +250,16 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 05 — Projection response and summary
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-05-projection-summary`
 - **Pull Request:** TBD
 - **Concept:** Raw projections are large. The agent needs a compact, honest summary (see [Summary shape](#summary-shape)).
 - **Rust introduced:** iterators (`iter`, `find`, `min_by_key`, `map`, `sum`), closures, borrowing (`&Projection`), converting cents to dollars without floating-point surprises.
 - **Functionality:**
   - `Projection`, `YearlyBalance` and related response types mirroring the API.
-  - `summarize(&Projection) -> Summary`, a pure function computing `depletionYear`, `endingBalance`, `lowestBalance`, `totalWithdrawn`, `totalUnfunded`, the phases, `lockedBalance` and `mortgagePayoffYear`.
-  - Made-up fixture responses in `tests/fixtures/`.
+  - `summarize(&Projection) -> Result<Summary, Error>`, a pure function computing `lastsThroughFinalYear`, `depletionYear`, `yearsShort`, `endingBalance`, `lowestBalance`, `totalWithdrawn`, `totalUnfunded`, `lockedWhenShort`, the phases, `mortgage.paidOffInYear` (nested `Option`: no mortgage / paid off / not paid off) and `currency`.
+  - Response types are lenient (unknown fields and phases tolerated) while plans stay strict.
+  - Real responses from a local financials-api for the two made-up fixture plans in `tests/fixtures/`.
 - **Tests:**
   - The plan never runs out (`depletionYear` is `None`).
   - The plan runs out mid-drawdown, and in year 1.

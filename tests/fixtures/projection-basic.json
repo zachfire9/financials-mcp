@@ -1,0 +1,1721 @@
+{
+ "years": 40,
+ "savingYears": 10,
+ "transitionYears": 0,
+ "drawdownYears": 30,
+ "currency": "USD",
+ "spending": [
+  {
+   "year": 1,
+   "expensesCents": 0,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 2,
+   "expensesCents": 0,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 3,
+   "expensesCents": 0,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 4,
+   "expensesCents": 0,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 5,
+   "expensesCents": 0,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 6,
+   "expensesCents": 0,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 7,
+   "expensesCents": 0,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 8,
+   "expensesCents": 0,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 9,
+   "expensesCents": 0,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 10,
+   "expensesCents": 0,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 11,
+   "expensesCents": 7680507,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 12,
+   "expensesCents": 7872520,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 13,
+   "expensesCents": 8069333,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 14,
+   "expensesCents": 8271066,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 15,
+   "expensesCents": 8477843,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 16,
+   "expensesCents": 8689789,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 17,
+   "expensesCents": 8907034,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 18,
+   "expensesCents": 9129710,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 19,
+   "expensesCents": 9357953,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 20,
+   "expensesCents": 9591902,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 21,
+   "expensesCents": 9831700,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 22,
+   "expensesCents": 10077493,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 23,
+   "expensesCents": 10329430,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 24,
+   "expensesCents": 10587666,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 25,
+   "expensesCents": 10852358,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 26,
+   "expensesCents": 11123667,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 27,
+   "expensesCents": 11401759,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 28,
+   "expensesCents": 11686803,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 29,
+   "expensesCents": 11978973,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 30,
+   "expensesCents": 12278447,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 31,
+   "expensesCents": 12585408,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 32,
+   "expensesCents": 12900043,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 33,
+   "expensesCents": 13222544,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 34,
+   "expensesCents": 13553108,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 35,
+   "expensesCents": 13891936,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 36,
+   "expensesCents": 14239234,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 37,
+   "expensesCents": 14595215,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 38,
+   "expensesCents": 14960095,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 39,
+   "expensesCents": 15334097,
+   "mortgagePaymentCents": 0
+  },
+  {
+   "year": 40,
+   "expensesCents": 15717449,
+   "mortgagePaymentCents": 0
+  }
+ ],
+ "items": [
+  {
+   "id": "item-401k",
+   "name": "Example 401(k)",
+   "startingAmountCents": 25000000,
+   "annualReturnRateBasisPoints": 700,
+   "annualContributionCents": 2000000,
+   "inflateAnnualContribution": true,
+   "yearlyBalances": [
+    {
+     "year": 0,
+     "phase": "starting",
+     "balanceCents": 25000000,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 1,
+     "phase": "saving",
+     "balanceCents": 28750000,
+     "contributionCents": 2000000,
+     "withdrawalCents": 0,
+     "growthCents": 1750000,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 2,
+     "phase": "saving",
+     "balanceCents": 32812500,
+     "contributionCents": 2050000,
+     "withdrawalCents": 0,
+     "growthCents": 2012500,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 3,
+     "phase": "saving",
+     "balanceCents": 37210625,
+     "contributionCents": 2101250,
+     "withdrawalCents": 0,
+     "growthCents": 2296875,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 4,
+     "phase": "saving",
+     "balanceCents": 41969150,
+     "contributionCents": 2153781,
+     "withdrawalCents": 0,
+     "growthCents": 2604744,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 5,
+     "phase": "saving",
+     "balanceCents": 47114617,
+     "contributionCents": 2207626,
+     "withdrawalCents": 0,
+     "growthCents": 2937841,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 6,
+     "phase": "saving",
+     "balanceCents": 52675457,
+     "contributionCents": 2262817,
+     "withdrawalCents": 0,
+     "growthCents": 3298023,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 7,
+     "phase": "saving",
+     "balanceCents": 58682126,
+     "contributionCents": 2319387,
+     "withdrawalCents": 0,
+     "growthCents": 3687282,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 8,
+     "phase": "saving",
+     "balanceCents": 65167247,
+     "contributionCents": 2377372,
+     "withdrawalCents": 0,
+     "growthCents": 4107749,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 9,
+     "phase": "saving",
+     "balanceCents": 72165760,
+     "contributionCents": 2436806,
+     "withdrawalCents": 0,
+     "growthCents": 4561707,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 10,
+     "phase": "saving",
+     "balanceCents": 79715089,
+     "contributionCents": 2497726,
+     "withdrawalCents": 0,
+     "growthCents": 5051603,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 11,
+     "phase": "drawdown",
+     "balanceCents": 85295145,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 5580056,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 12,
+     "phase": "drawdown",
+     "balanceCents": 85312930,
+     "contributionCents": 0,
+     "withdrawalCents": 5952875,
+     "growthCents": 5970660,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 13,
+     "phase": "drawdown",
+     "balanceCents": 83215502,
+     "contributionCents": 0,
+     "withdrawalCents": 8069333,
+     "growthCents": 5971905,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 14,
+     "phase": "drawdown",
+     "balanceCents": 80769521,
+     "contributionCents": 0,
+     "withdrawalCents": 8271066,
+     "growthCents": 5825085,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 15,
+     "phase": "drawdown",
+     "balanceCents": 77945544,
+     "contributionCents": 0,
+     "withdrawalCents": 8477843,
+     "growthCents": 5653866,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 16,
+     "phase": "drawdown",
+     "balanceCents": 74711943,
+     "contributionCents": 0,
+     "withdrawalCents": 8689789,
+     "growthCents": 5456188,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 17,
+     "phase": "drawdown",
+     "balanceCents": 71034745,
+     "contributionCents": 0,
+     "withdrawalCents": 8907034,
+     "growthCents": 5229836,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 18,
+     "phase": "drawdown",
+     "balanceCents": 66877467,
+     "contributionCents": 0,
+     "withdrawalCents": 9129710,
+     "growthCents": 4972432,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 19,
+     "phase": "drawdown",
+     "balanceCents": 62200937,
+     "contributionCents": 0,
+     "withdrawalCents": 9357953,
+     "growthCents": 4681423,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 20,
+     "phase": "drawdown",
+     "balanceCents": 56963101,
+     "contributionCents": 0,
+     "withdrawalCents": 9591902,
+     "growthCents": 4354066,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 21,
+     "phase": "drawdown",
+     "balanceCents": 51118818,
+     "contributionCents": 0,
+     "withdrawalCents": 9831700,
+     "growthCents": 3987417,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 22,
+     "phase": "drawdown",
+     "balanceCents": 44619642,
+     "contributionCents": 0,
+     "withdrawalCents": 10077493,
+     "growthCents": 3578317,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 23,
+     "phase": "drawdown",
+     "balanceCents": 37413587,
+     "contributionCents": 0,
+     "withdrawalCents": 10329430,
+     "growthCents": 3123375,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 24,
+     "phase": "drawdown",
+     "balanceCents": 29444872,
+     "contributionCents": 0,
+     "withdrawalCents": 10587666,
+     "growthCents": 2618951,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 25,
+     "phase": "drawdown",
+     "balanceCents": 20653655,
+     "contributionCents": 0,
+     "withdrawalCents": 10852358,
+     "growthCents": 2061141,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 26,
+     "phase": "drawdown",
+     "balanceCents": 10975744,
+     "contributionCents": 0,
+     "withdrawalCents": 11123667,
+     "growthCents": 1445756,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 27,
+     "phase": "drawdown",
+     "balanceCents": 342287,
+     "contributionCents": 0,
+     "withdrawalCents": 11401759,
+     "growthCents": 768302,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 28,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 366247,
+     "growthCents": 23960,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 29,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 30,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 31,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 32,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 33,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 34,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 35,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 36,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 37,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 38,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 39,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 40,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    }
+   ]
+  },
+  {
+   "id": "item-roth",
+   "name": "Example Roth IRA",
+   "startingAmountCents": 8000000,
+   "annualReturnRateBasisPoints": 700,
+   "annualContributionCents": 700000,
+   "inflateAnnualContribution": false,
+   "withdrawalPriority": 3,
+   "yearlyBalances": [
+    {
+     "year": 0,
+     "phase": "starting",
+     "balanceCents": 8000000,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 1,
+     "phase": "saving",
+     "balanceCents": 9260000,
+     "contributionCents": 700000,
+     "withdrawalCents": 0,
+     "growthCents": 560000,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 2,
+     "phase": "saving",
+     "balanceCents": 10608200,
+     "contributionCents": 700000,
+     "withdrawalCents": 0,
+     "growthCents": 648200,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 3,
+     "phase": "saving",
+     "balanceCents": 12050774,
+     "contributionCents": 700000,
+     "withdrawalCents": 0,
+     "growthCents": 742574,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 4,
+     "phase": "saving",
+     "balanceCents": 13594328,
+     "contributionCents": 700000,
+     "withdrawalCents": 0,
+     "growthCents": 843554,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 5,
+     "phase": "saving",
+     "balanceCents": 15245931,
+     "contributionCents": 700000,
+     "withdrawalCents": 0,
+     "growthCents": 951603,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 6,
+     "phase": "saving",
+     "balanceCents": 17013146,
+     "contributionCents": 700000,
+     "withdrawalCents": 0,
+     "growthCents": 1067215,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 7,
+     "phase": "saving",
+     "balanceCents": 18904066,
+     "contributionCents": 700000,
+     "withdrawalCents": 0,
+     "growthCents": 1190920,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 8,
+     "phase": "saving",
+     "balanceCents": 20927351,
+     "contributionCents": 700000,
+     "withdrawalCents": 0,
+     "growthCents": 1323285,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 9,
+     "phase": "saving",
+     "balanceCents": 23092266,
+     "contributionCents": 700000,
+     "withdrawalCents": 0,
+     "growthCents": 1464915,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 10,
+     "phase": "saving",
+     "balanceCents": 25408725,
+     "contributionCents": 700000,
+     "withdrawalCents": 0,
+     "growthCents": 1616459,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 11,
+     "phase": "drawdown",
+     "balanceCents": 27187336,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 1778611,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 12,
+     "phase": "drawdown",
+     "balanceCents": 29090450,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 1903114,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 13,
+     "phase": "drawdown",
+     "balanceCents": 31126782,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 2036332,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 14,
+     "phase": "drawdown",
+     "balanceCents": 33305657,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 2178875,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 15,
+     "phase": "drawdown",
+     "balanceCents": 35637053,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 2331396,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 16,
+     "phase": "drawdown",
+     "balanceCents": 38131647,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 2494594,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 17,
+     "phase": "drawdown",
+     "balanceCents": 40800862,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 2669215,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 18,
+     "phase": "drawdown",
+     "balanceCents": 43656922,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 2856060,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 19,
+     "phase": "drawdown",
+     "balanceCents": 46712907,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 3055985,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 20,
+     "phase": "drawdown",
+     "balanceCents": 49982810,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 3269903,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 21,
+     "phase": "drawdown",
+     "balanceCents": 53481607,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 3498797,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 22,
+     "phase": "drawdown",
+     "balanceCents": 57225319,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 3743712,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 23,
+     "phase": "drawdown",
+     "balanceCents": 61231091,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 4005772,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 24,
+     "phase": "drawdown",
+     "balanceCents": 65517267,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 4286176,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 25,
+     "phase": "drawdown",
+     "balanceCents": 70103476,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 4586209,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 26,
+     "phase": "drawdown",
+     "balanceCents": 75010719,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 4907243,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 27,
+     "phase": "drawdown",
+     "balanceCents": 80261469,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 5250750,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 28,
+     "phase": "drawdown",
+     "balanceCents": 74559216,
+     "contributionCents": 0,
+     "withdrawalCents": 11320556,
+     "growthCents": 5618303,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 29,
+     "phase": "drawdown",
+     "balanceCents": 67799388,
+     "contributionCents": 0,
+     "withdrawalCents": 11978973,
+     "growthCents": 5219145,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 30,
+     "phase": "drawdown",
+     "balanceCents": 60266898,
+     "contributionCents": 0,
+     "withdrawalCents": 12278447,
+     "growthCents": 4745957,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 31,
+     "phase": "drawdown",
+     "balanceCents": 51900173,
+     "contributionCents": 0,
+     "withdrawalCents": 12585408,
+     "growthCents": 4218683,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 32,
+     "phase": "drawdown",
+     "balanceCents": 42633142,
+     "contributionCents": 0,
+     "withdrawalCents": 12900043,
+     "growthCents": 3633012,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 33,
+     "phase": "drawdown",
+     "balanceCents": 32394918,
+     "contributionCents": 0,
+     "withdrawalCents": 13222544,
+     "growthCents": 2984320,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 34,
+     "phase": "drawdown",
+     "balanceCents": 21109454,
+     "contributionCents": 0,
+     "withdrawalCents": 13553108,
+     "growthCents": 2267644,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 35,
+     "phase": "drawdown",
+     "balanceCents": 8695180,
+     "contributionCents": 0,
+     "withdrawalCents": 13891936,
+     "growthCents": 1477662,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 36,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 9303843,
+     "growthCents": 608663,
+     "unfundedWithdrawalCents": 4935391
+    },
+    {
+     "year": 37,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 14595215
+    },
+    {
+     "year": 38,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 14960095
+    },
+    {
+     "year": 39,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 15334097
+    },
+    {
+     "year": 40,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 15717449
+    }
+   ]
+  },
+  {
+   "id": "item-brokerage",
+   "name": "Example brokerage",
+   "startingAmountCents": 5000000,
+   "annualReturnRateBasisPoints": 600,
+   "annualContributionCents": 0,
+   "inflateAnnualContribution": false,
+   "withdrawalPriority": 1,
+   "yearlyBalances": [
+    {
+     "year": 0,
+     "phase": "starting",
+     "balanceCents": 5000000,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 1,
+     "phase": "saving",
+     "balanceCents": 5300000,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 300000,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 2,
+     "phase": "saving",
+     "balanceCents": 5618000,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 318000,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 3,
+     "phase": "saving",
+     "balanceCents": 5955080,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 337080,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 4,
+     "phase": "saving",
+     "balanceCents": 6312385,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 357305,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 5,
+     "phase": "saving",
+     "balanceCents": 6691128,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 378743,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 6,
+     "phase": "saving",
+     "balanceCents": 7092596,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 401468,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 7,
+     "phase": "saving",
+     "balanceCents": 7518152,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 425556,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 8,
+     "phase": "saving",
+     "balanceCents": 7969241,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 451089,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 9,
+     "phase": "saving",
+     "balanceCents": 8447395,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 478154,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 10,
+     "phase": "saving",
+     "balanceCents": 8954239,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 506844,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 11,
+     "phase": "drawdown",
+     "balanceCents": 1810986,
+     "contributionCents": 0,
+     "withdrawalCents": 7680507,
+     "growthCents": 537254,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 12,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 1919645,
+     "growthCents": 108659,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 13,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 14,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 15,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 16,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 17,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 18,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 19,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 20,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 21,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 22,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 23,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 24,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 25,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 26,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 27,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 28,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 29,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 30,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 31,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 32,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 33,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 34,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 35,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 36,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 37,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 38,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 39,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    },
+    {
+     "year": 40,
+     "phase": "drawdown",
+     "balanceCents": 0,
+     "contributionCents": 0,
+     "withdrawalCents": 0,
+     "growthCents": 0,
+     "unfundedWithdrawalCents": 0
+    }
+   ]
+  }
+ ],
+ "totals": [
+  {
+   "year": 0,
+   "phase": "starting",
+   "balanceCents": 38000000,
+   "contributionCents": 0,
+   "withdrawalCents": 0,
+   "growthCents": 0,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 1,
+   "phase": "saving",
+   "balanceCents": 43310000,
+   "contributionCents": 2700000,
+   "withdrawalCents": 0,
+   "growthCents": 2610000,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 2,
+   "phase": "saving",
+   "balanceCents": 49038700,
+   "contributionCents": 2750000,
+   "withdrawalCents": 0,
+   "growthCents": 2978700,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 3,
+   "phase": "saving",
+   "balanceCents": 55216479,
+   "contributionCents": 2801250,
+   "withdrawalCents": 0,
+   "growthCents": 3376529,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 4,
+   "phase": "saving",
+   "balanceCents": 61875863,
+   "contributionCents": 2853781,
+   "withdrawalCents": 0,
+   "growthCents": 3805603,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 5,
+   "phase": "saving",
+   "balanceCents": 69051676,
+   "contributionCents": 2907626,
+   "withdrawalCents": 0,
+   "growthCents": 4268187,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 6,
+   "phase": "saving",
+   "balanceCents": 76781199,
+   "contributionCents": 2962817,
+   "withdrawalCents": 0,
+   "growthCents": 4766706,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 7,
+   "phase": "saving",
+   "balanceCents": 85104344,
+   "contributionCents": 3019387,
+   "withdrawalCents": 0,
+   "growthCents": 5303758,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 8,
+   "phase": "saving",
+   "balanceCents": 94063839,
+   "contributionCents": 3077372,
+   "withdrawalCents": 0,
+   "growthCents": 5882123,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 9,
+   "phase": "saving",
+   "balanceCents": 103705421,
+   "contributionCents": 3136806,
+   "withdrawalCents": 0,
+   "growthCents": 6504776,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 10,
+   "phase": "saving",
+   "balanceCents": 114078053,
+   "contributionCents": 3197726,
+   "withdrawalCents": 0,
+   "growthCents": 7174906,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 11,
+   "phase": "drawdown",
+   "balanceCents": 114293467,
+   "contributionCents": 0,
+   "withdrawalCents": 7680507,
+   "growthCents": 7895921,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 12,
+   "phase": "drawdown",
+   "balanceCents": 114403380,
+   "contributionCents": 0,
+   "withdrawalCents": 7872520,
+   "growthCents": 7982433,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 13,
+   "phase": "drawdown",
+   "balanceCents": 114342284,
+   "contributionCents": 0,
+   "withdrawalCents": 8069333,
+   "growthCents": 8008237,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 14,
+   "phase": "drawdown",
+   "balanceCents": 114075178,
+   "contributionCents": 0,
+   "withdrawalCents": 8271066,
+   "growthCents": 8003960,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 15,
+   "phase": "drawdown",
+   "balanceCents": 113582597,
+   "contributionCents": 0,
+   "withdrawalCents": 8477843,
+   "growthCents": 7985262,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 16,
+   "phase": "drawdown",
+   "balanceCents": 112843590,
+   "contributionCents": 0,
+   "withdrawalCents": 8689789,
+   "growthCents": 7950782,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 17,
+   "phase": "drawdown",
+   "balanceCents": 111835607,
+   "contributionCents": 0,
+   "withdrawalCents": 8907034,
+   "growthCents": 7899051,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 18,
+   "phase": "drawdown",
+   "balanceCents": 110534389,
+   "contributionCents": 0,
+   "withdrawalCents": 9129710,
+   "growthCents": 7828492,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 19,
+   "phase": "drawdown",
+   "balanceCents": 108913844,
+   "contributionCents": 0,
+   "withdrawalCents": 9357953,
+   "growthCents": 7737408,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 20,
+   "phase": "drawdown",
+   "balanceCents": 106945911,
+   "contributionCents": 0,
+   "withdrawalCents": 9591902,
+   "growthCents": 7623969,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 21,
+   "phase": "drawdown",
+   "balanceCents": 104600425,
+   "contributionCents": 0,
+   "withdrawalCents": 9831700,
+   "growthCents": 7486214,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 22,
+   "phase": "drawdown",
+   "balanceCents": 101844961,
+   "contributionCents": 0,
+   "withdrawalCents": 10077493,
+   "growthCents": 7322029,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 23,
+   "phase": "drawdown",
+   "balanceCents": 98644678,
+   "contributionCents": 0,
+   "withdrawalCents": 10329430,
+   "growthCents": 7129147,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 24,
+   "phase": "drawdown",
+   "balanceCents": 94962139,
+   "contributionCents": 0,
+   "withdrawalCents": 10587666,
+   "growthCents": 6905127,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 25,
+   "phase": "drawdown",
+   "balanceCents": 90757131,
+   "contributionCents": 0,
+   "withdrawalCents": 10852358,
+   "growthCents": 6647350,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 26,
+   "phase": "drawdown",
+   "balanceCents": 85986463,
+   "contributionCents": 0,
+   "withdrawalCents": 11123667,
+   "growthCents": 6352999,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 27,
+   "phase": "drawdown",
+   "balanceCents": 80603756,
+   "contributionCents": 0,
+   "withdrawalCents": 11401759,
+   "growthCents": 6019052,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 28,
+   "phase": "drawdown",
+   "balanceCents": 74559216,
+   "contributionCents": 0,
+   "withdrawalCents": 11686803,
+   "growthCents": 5642263,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 29,
+   "phase": "drawdown",
+   "balanceCents": 67799388,
+   "contributionCents": 0,
+   "withdrawalCents": 11978973,
+   "growthCents": 5219145,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 30,
+   "phase": "drawdown",
+   "balanceCents": 60266898,
+   "contributionCents": 0,
+   "withdrawalCents": 12278447,
+   "growthCents": 4745957,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 31,
+   "phase": "drawdown",
+   "balanceCents": 51900173,
+   "contributionCents": 0,
+   "withdrawalCents": 12585408,
+   "growthCents": 4218683,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 32,
+   "phase": "drawdown",
+   "balanceCents": 42633142,
+   "contributionCents": 0,
+   "withdrawalCents": 12900043,
+   "growthCents": 3633012,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 33,
+   "phase": "drawdown",
+   "balanceCents": 32394918,
+   "contributionCents": 0,
+   "withdrawalCents": 13222544,
+   "growthCents": 2984320,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 34,
+   "phase": "drawdown",
+   "balanceCents": 21109454,
+   "contributionCents": 0,
+   "withdrawalCents": 13553108,
+   "growthCents": 2267644,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 35,
+   "phase": "drawdown",
+   "balanceCents": 8695180,
+   "contributionCents": 0,
+   "withdrawalCents": 13891936,
+   "growthCents": 1477662,
+   "unfundedWithdrawalCents": 0
+  },
+  {
+   "year": 36,
+   "phase": "drawdown",
+   "balanceCents": 0,
+   "contributionCents": 0,
+   "withdrawalCents": 9303843,
+   "growthCents": 608663,
+   "unfundedWithdrawalCents": 4935391
+  },
+  {
+   "year": 37,
+   "phase": "drawdown",
+   "balanceCents": 0,
+   "contributionCents": 0,
+   "withdrawalCents": 0,
+   "growthCents": 0,
+   "unfundedWithdrawalCents": 14595215
+  },
+  {
+   "year": 38,
+   "phase": "drawdown",
+   "balanceCents": 0,
+   "contributionCents": 0,
+   "withdrawalCents": 0,
+   "growthCents": 0,
+   "unfundedWithdrawalCents": 14960095
+  },
+  {
+   "year": 39,
+   "phase": "drawdown",
+   "balanceCents": 0,
+   "contributionCents": 0,
+   "withdrawalCents": 0,
+   "growthCents": 0,
+   "unfundedWithdrawalCents": 15334097
+  },
+  {
+   "year": 40,
+   "phase": "drawdown",
+   "balanceCents": 0,
+   "contributionCents": 0,
+   "withdrawalCents": 0,
+   "growthCents": 0,
+   "unfundedWithdrawalCents": 15717449
+  }
+ ]
+}

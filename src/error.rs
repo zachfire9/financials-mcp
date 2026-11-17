@@ -38,6 +38,12 @@ pub enum Error {
     #[error("invalid plan: {}", .problems.join("; "))]
     InvalidPlan { problems: Vec<String> },
 
+    /// financials-api answered with something that breaks its own contract,
+    /// such as a projection with no years. This points to a bug or a version
+    /// mismatch, not a bad plan.
+    #[error("unexpected response from financials-api: {problem}")]
+    UnexpectedResponse { problem: String },
+
     /// A setting is missing, malformed or unsafe. Messages name the variable
     /// or `.env` line, never a value, since values may include the token.
     #[error("configuration problem: {problem}")]
