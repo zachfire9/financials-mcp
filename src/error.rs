@@ -10,8 +10,7 @@
 //! a value from the plan. Plans hold private financial data, and errors end up
 //! in model conversations and logs.
 
-/// Everything that can go wrong in this crate. More variants arrive with
-/// later steps (the API client).
+/// Everything that can go wrong in this crate.
 ///
 /// A Rust `enum` is a *sum type*: an `Error` is exactly one of these variants,
 /// and each variant carries its own fields. Go would use several error types
@@ -37,6 +36,18 @@ pub enum Error {
     /// once. `.problems.join("; ")` is ordinary Rust code inside the message.
     #[error("invalid plan: {}", .problems.join("; "))]
     InvalidPlan { problems: Vec<String> },
+
+    /// financials-api refused the access token (`401`). The token itself is
+    /// never part of the message.
+    #[error(
+        "financials-api rejected the access token (missing or invalid); check FINANCIALS_ACCESS_TOKEN"
+    )]
+    Auth,
+
+    /// financials-api couldn't be reached or failed: connection refused,
+    /// timeout, a server error, a redirect, or a wrong URL.
+    #[error("financials-api is unavailable: {problem}")]
+    Api { problem: String },
 
     /// financials-api answered with something that breaks its own contract,
     /// such as a projection with no years. This points to a bug or a version
