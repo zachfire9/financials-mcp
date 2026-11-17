@@ -271,17 +271,20 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 06 — Projector trait and fake projector
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-06-projector-trait`
 - **Pull Request:** TBD
 - **Concept:** Put "run a projection" behind an interface, so everything built on top of it can be tested without the network.
 - **Rust introduced:** traits, `async fn` in traits, `tokio` and `#[tokio::test]`, `Arc`, test doubles.
 - **Functionality:**
-  - `trait Projector { async fn project(&self, plan: &Plan) -> Result<Projection, Error>; }`
-  - `FakeProjector`, which returns scripted responses or computes a simple deterministic projection from the plan for tests, and records the plans it received.
+  - `trait Projector: Send + Sync { fn project(&self, plan: &Plan) -> impl Future<Output = Result<Projection, Error>> + Send; }` (the expanded form of `async fn`, so the future is guaranteed `Send` for parallel batches).
+  - `FakeProjector`, which returns scripted responses or calls a test-supplied function (`from_fn`) for each plan, and records the plans it received.
+  - `project_and_summarize<P: Projector>()`: pre-check, project, summarize (the core every tool will call).
 - **Tests:**
   - The fake returns scripted responses in order and records requests.
-  - The fake can be told to return an error.
+  - The fake can be told to return an error; running out of scripted responses panics as a test bug.
+  - `project_and_summarize` summarizes, and an invalid plan never reaches the projector.
+  - A projector shared via `Arc` across a spawned task through generic code (fails to compile without the `+ Send` bound).
 - **Verification:**
   - `cargo test`
 
