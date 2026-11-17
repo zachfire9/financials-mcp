@@ -273,7 +273,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-06-projector-trait`
-- **Pull Request:** TBD
+- **Pull Request:** https://github.com/zachfire9/financials-mcp/pull/6
 - **Concept:** Put "run a projection" behind an interface, so everything built on top of it can be tested without the network.
 - **Rust introduced:** traits, `async fn` in traits, `tokio` and `#[tokio::test]`, `Arc`, test doubles.
 - **Functionality:**
