@@ -290,7 +290,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 07 — financials-api HTTP client
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-07-financials-api-client`
 - **Pull Request:** TBD
 - **Concept:** The real projector calls `POST /projections`, with clear handling for every way an HTTP call can fail.
@@ -301,11 +301,13 @@ Every tool reports projections as a compact summary computed from the API's `Pro
   - A 10-second timeout per call.
   - Maps API `400` responses to an `InvalidPlan` error carrying the API's message, `401` to an auth error (with no token in the message), and timeouts and connection failures to clear errors.
   - Strips values from passed-through API messages (for example the mortgage check quotes the first month's interest in cents), keeping the field and rule.
+  - Refuses redirects (the token is in a custom header that clients don't strip on cross-host redirects), caps response size at 8 MiB, marks the token header sensitive.
 - **Tests (wiremock):**
-  - A successful projection parses.
+  - A successful projection parses, and the request body is exactly the plan's JSON.
   - The access token header is sent only when configured.
-  - The `400` message is passed through; `401` is reported as auth without any secret.
-  - Timeouts and `5xx` responses become clear errors.
+  - The `400` message is passed through (split into problems, values stripped); `401` is reported as auth without any secret.
+  - Timeouts, refused connections, `404`, `5xx`, redirects (the target never sees the request), oversized and non-projection responses become clear errors.
+  - Manual: verified end to end against a local financials-api (open and token-protected).
 - **Verification:**
   - `cargo test`
 
