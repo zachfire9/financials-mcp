@@ -63,6 +63,10 @@ pub enum Error {
     #[error("could not write the output")]
     Output,
 
+    /// The MCP server couldn't start or stopped unexpectedly.
+    #[error("MCP server problem: {problem}")]
+    Server { problem: String },
+
     /// A setting is missing, malformed or unsafe. Messages name the variable
     /// or `.env` line, never a value, since values may include the token.
     #[error("configuration problem: {problem}")]

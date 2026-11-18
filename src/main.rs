@@ -10,6 +10,8 @@ use financials_mcp::api::ApiProjector;
 use financials_mcp::cli::{Cli, Command, run_project};
 use financials_mcp::config::Config;
 use financials_mcp::error::Error;
+use financials_mcp::server::FinancialsServer;
+use rmcp::ServiceExt;
 
 /// `#[tokio::main]` turns `async fn main` into a normal `main` that starts a
 /// tokio runtime and runs this function on it. `current_thread` uses a single
@@ -29,6 +31,7 @@ async fn main() -> ExitCode {
             Ok(())
         }
         Some(Command::Project { plan }) => project(&plan).await,
+        Some(Command::Serve) => serve().await,
     };
 
     match result {
@@ -39,6 +42,29 @@ async fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Serves MCP over stdin/stdout until the client disconnects.
+///
+/// Configuration problems are reported before serving starts (on stderr, as
+/// usual). An unreachable API is *not* a startup error: each tool call reports
+/// it, so the model can tell the user.
+async fn serve() -> Result<(), Error> {
+    let config = Config::from_env()?;
+    let server = FinancialsServer::new(ApiProjector::new(&config)?);
+
+    // `.serve(stdio())` performs the `initialize` handshake and returns a
+    // running service; `.waiting()` resolves when the client disconnects.
+    let running = server
+        .serve(rmcp::transport::stdio())
+        .await
+        .map_err(|_| Error::Server {
+            problem: "the MCP client did not complete initialization".to_string(),
+        })?;
+    running.waiting().await.map_err(|_| Error::Server {
+        problem: "the MCP server stopped unexpectedly".to_string(),
+    })?;
+    Ok(())
 }
 
 async fn project(plan: &std::path::Path) -> Result<(), Error> {

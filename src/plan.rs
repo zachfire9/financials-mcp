@@ -24,6 +24,7 @@
 //! | `*int` (nil means "not set")             | `Option<i32>` (`None` means "not set")         |
 //! | `DisallowUnknownFields()` in the API     | `deny_unknown_fields`                          |
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
@@ -33,12 +34,18 @@ use crate::error::Error;
 const MAX_YEARS: i32 = 75;
 const MAX_EXPENSES: usize = 30;
 
-/// The inputs to one projection: the financials-api `POST /projections` body.
-///
-/// Rejecting unknown fields matters: the API rejects them too, and silently
-/// dropping a misspelled field (say `anualWithdrawalCents`) would make a
-/// projection quietly use $0 instead of failing.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+// `///` doc comments on these types and fields are user-facing: schemars
+// copies them into the JSON Schema that MCP clients show the model (Step 09).
+// Rust explanations go in `//` comments like this one instead.
+//
+// Rejecting unknown fields matters: the API rejects them too, and silently
+// dropping a misspelled field (say `anualWithdrawalCents`) would make a
+// projection quietly use $0 instead of failing.
+
+/// The inputs to one retirement projection: the financials-api
+/// `POST /projections` request body. Money is integer cents; rates are integer
+/// basis points (700 = 7%).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Plan {
     /// Simple mode: project this many years. Use either `years` or the
@@ -63,23 +70,23 @@ pub struct Plan {
     /// Withdrawal in years when one person has retired and another hasn't.
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub gap_annual_withdrawal_cents: i64,
-    /// Itemized drawdown spending, used instead of `annual_withdrawal_cents`.
+    /// Itemized drawdown spending, used instead of `annualWithdrawalCents`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub expenses: Vec<ExpenseInput>,
     /// An optional mortgage, amortized monthly over the whole projection.
-    ///
-    /// `Option<T>` is either `Some(value)` or `None`. Rust has no `nil`: a
-    /// value that might be missing says so in its type, and the compiler makes
-    /// every use handle the `None` case.
+    // `Option<T>` is either `Some(value)` or `None`. Rust has no `nil`: a value
+    // that might be missing says so in its type, and the compiler makes every
+    // use handle the `None` case.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mortgage: Option<MortgageInput>,
-    /// The accounts being projected. This is the only top-level field without
-    /// `default`, so a plan with no `items` at all fails to load.
+    /// The accounts being projected (required, at least one).
+    // The only top-level field without `default`, so a plan with no `items`
+    // at all fails to load.
     pub items: Vec<ItemInput>,
 }
 
 /// One account: a 401(k), an IRA, a brokerage account, cash, and so on.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ItemInput {
     /// Optional in requests; the UI sends one for saved items.
@@ -90,30 +97,29 @@ pub struct ItemInput {
     /// A 3-letter code such as `USD`. All items must share one currency.
     pub currency: String,
     pub annual_return_rate_basis_points: i32,
-    /// A different return once drawdown starts. `None` keeps the saving rate.
+    /// A different return once drawdown starts. Omit to keep the saving rate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub drawdown_annual_return_rate_basis_points: Option<i32>,
     pub annual_contribution_cents: i64,
     pub inflate_annual_contribution: bool,
-    /// Which person owns the account (matches a `PersonInput::id`).
+    /// Which person owns the account (matches an `id` in `people`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub owner_id: String,
     /// 1 = withdraw first, 2 = normal (also when 0/omitted), 3 = last.
     #[serde(default, skip_serializing_if = "is_zero_i32")]
     pub withdrawal_priority: i32,
-    /// The last year this account can't be withdrawn from.
-    ///
-    /// This is where `Option` earns its keep: `None` means "use the default"
-    /// (when its owner retires), while `Some(0)` means "available from year
-    /// 1". A plain `i32` couldn't tell those apart. Go needs a `*int` pointer
-    /// for the same reason.
+    /// The last year this account can't be withdrawn from. Omit to use the
+    /// default (when its owner retires); 0 means available from year 1.
+    // This is where `Option` earns its keep: `None` means "use the default",
+    // while `Some(0)` means "available from year 1". A plain `i32` couldn't
+    // tell those apart. Go needs a `*int` pointer for the same reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub withdrawal_available_after_year: Option<i32>,
     pub sort_order: i32,
 }
 
 /// A household member with their own retirement timing.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PersonInput {
     pub id: String,
@@ -122,7 +128,7 @@ pub struct PersonInput {
 }
 
 /// One itemized expense in drawdown (housing, travel, healthcare, ...).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExpenseInput {
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -145,7 +151,7 @@ pub struct ExpenseInput {
 }
 
 /// A mortgage paid monthly; payments count as withdrawals once drawdown starts.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MortgageInput {
     pub balance_cents: i64,
