@@ -17,6 +17,7 @@
 // declares it. `pub` lets the binary and the integration tests use it, as
 // `financials_mcp::plan::Plan`.
 pub mod api;
+pub mod cli;
 pub mod config;
 pub mod error;
 pub mod plan;

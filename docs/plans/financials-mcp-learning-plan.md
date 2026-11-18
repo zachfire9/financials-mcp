@@ -313,17 +313,18 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 08 — Manual projection debug command
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-08-projection-debug-command`
-- **Pull Request:** TBD
+- **Pull Request:** https://github.com/zachfire9/financials-mcp/pull/8
 - **Concept:** Exercise the projection path directly before an MCP client drives it, the same way agent-harness's `tool` command let tools be debugged without a model.
 - **Rust introduced:** `clap` derive (subcommands, arguments), reading files, `#[tokio::main]`, exit codes.
 - **Functionality:**
   - `financials-mcp project <plan.json>` loads a plan, runs it through `ApiProjector`, and prints the summary as JSON.
   - Controlled errors for a missing file, invalid JSON, a failed pre-check and API errors, with a non-zero exit code.
 - **Tests:**
-  - Command parsing (subcommand, missing argument).
+  - Command parsing (subcommand, missing argument, unknown subcommand, clap's own definition check).
   - With a fake projector: the summary is printed for a valid plan, and each error case gives a clear message and a non-zero result.
+  - The real binary: banner, `--help`, exit code 2 for usage mistakes, 1 for a missing file or an unreachable API, and a full run against a mock API (via `spawn_blocking`).
 - **Verification:**
   - `cargo test`
   - Manual: start financials-api locally (`$env:FINANCIALS_STORAGE_DRIVER="ephemeral"; go run ./cmd/api`), then `cargo run -- project tests/fixtures/plan-basic.json`.

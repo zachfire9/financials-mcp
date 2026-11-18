@@ -10,7 +10,8 @@ This is a learning project, built one reviewable step at a time. Each step teach
 - **Step 02 (plan model):** `Plan` and friends mirror the financials-api projection request with serde.
 - **Step 03 (errors and pre-checks):** an `Error` enum whose messages name fields but never quote values, plus quick pre-checks in the API's own wording.
 - **Step 04 (configuration):** `Config` loads the API URL and access token from the environment and `.env`, and never prints the token.
-- Running the binary still prints a placeholder banner. The planner tools arrive in later steps.
+- **Steps 05–07:** projection summaries, the `Projector` trait with a fake for tests, and the real financials-api client.
+- **Step 08 (debug command):** `financials-mcp project <plan.json>` runs a plan through financials-api and prints the summary. The MCP tools arrive in later steps.
 
 ## Requirements
 
@@ -34,6 +35,20 @@ Settings come from the process environment, then a local `.env` file (gitignored
 | `FINANCIALS_ACCESS_TOKEN` | *(none)* | Sent as `X-Financials-Access-Token` when set. Never printed. |
 
 A variable set in the environment wins over `.env`, even when it's empty (empty means "use the default").
+
+## Try it against financials-api
+
+Start financials-api locally in `ephemeral` mode (from the financials-api repo), then run a plan:
+
+```powershell
+# in financials-api
+$env:FINANCIALS_STORAGE_DRIVER="ephemeral"; go run ./cmd/api
+
+# in financials-mcp
+cargo run -- project tests/fixtures/plan-household.json
+```
+
+It prints the summary as JSON on stdout and exits with 0. Problems go to stderr with exit code 1 (or 2 for a usage mistake).
 
 ## Commands
 

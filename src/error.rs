@@ -55,6 +55,14 @@ pub enum Error {
     #[error("unexpected response from financials-api: {problem}")]
     UnexpectedResponse { problem: String },
 
+    /// A plan file couldn't be read. Names the path, never the contents.
+    #[error("{problem}")]
+    PlanFile { problem: String },
+
+    /// The result couldn't be written (for example, stdout was closed).
+    #[error("could not write the output")]
+    Output,
+
     /// A setting is missing, malformed or unsafe. Messages name the variable
     /// or `.env` line, never a value, since values may include the token.
     #[error("configuration problem: {problem}")]
