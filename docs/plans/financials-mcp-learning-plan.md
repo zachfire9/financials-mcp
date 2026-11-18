@@ -333,7 +333,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-09-mcp-stdio-run-projection`
-- **Pull Request:** TBD
+- **Pull Request:** https://github.com/zachfire9/financials-mcp/pull/9
 - **Concept:** MCP basics. A client starts the server as a process and talks JSON-RPC over stdin/stdout. Tools are advertised with names, descriptions, input schemas and annotations.
 - **Rust introduced:** the official MCP SDK (`rmcp`), generating JSON Schema for tool inputs (`schemars`), and using a library's macros and traits.
 - **Functionality:**
