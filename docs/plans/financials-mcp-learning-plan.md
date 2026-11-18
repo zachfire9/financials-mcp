@@ -331,9 +331,9 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 09 — First MCP server over stdio: `run_projection`
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-09-mcp-stdio-run-projection`
-- **Pull Request:** TBD
+- **Pull Request:** https://github.com/zachfire9/financials-mcp/pull/9
 - **Concept:** MCP basics. A client starts the server as a process and talks JSON-RPC over stdin/stdout. Tools are advertised with names, descriptions, input schemas and annotations.
 - **Rust introduced:** the official MCP SDK (`rmcp`), generating JSON Schema for tool inputs (`schemars`), and using a library's macros and traits.
 - **Functionality:**
@@ -341,10 +341,14 @@ Every tool reports projections as a compact summary computed from the API's `Pro
   - One tool: `run_projection(plan)`, returning the summary and the `assumptions` block, annotated read-only.
   - Short server instructions: use the tools for every number.
   - Nothing besides protocol messages is written to stdout.
+  - Bad plans and API failures are tool errors (`isError`) the model can read, not protocol errors. The plan is advertised with its full schema but parsed by `Plan::from_json`, so errors keep never quoting values.
+  - Plan field doc comments are model-facing (they become the schema's descriptions); Rust notes moved to `//` comments.
+  - Minimum Rust raised to 1.88 (rmcp 3.x).
 - **Tests:**
   - An in-process MCP client lists exactly one tool, with the expected schema and read-only annotation.
   - Calling `run_projection` with the fake projector returns the summary.
   - An invalid plan returns a tool error naming the field, not a crash.
+  - The real binary speaks raw MCP over stdio, and nothing else reaches stdout.
 - **Verification:**
   - `cargo test`
   - Manual: the MCP Inspector lists and calls the tool.
