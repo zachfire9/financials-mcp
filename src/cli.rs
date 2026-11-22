@@ -40,6 +40,11 @@ pub enum Command {
         /// Path to a plan JSON file (the POST /projections request body).
         plan: PathBuf,
     },
+    /// Start the MCP server on stdin/stdout, for an MCP client to launch.
+    ///
+    /// Reads FINANCIALS_API_URL and FINANCIALS_ACCESS_TOKEN from the
+    /// environment or a local .env file.
+    Serve,
 }
 
 /// Runs the `project` command: load, check, project, summarize, print.
@@ -118,6 +123,12 @@ mod tests {
                 plan: PathBuf::from("my-plan.json")
             })
         );
+    }
+
+    #[test]
+    fn serve_takes_no_arguments() {
+        let cli = Cli::try_parse_from(["financials-mcp", "serve"]).unwrap();
+        assert_eq!(cli.command, Some(Command::Serve));
     }
 
     #[test]

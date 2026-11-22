@@ -23,6 +23,7 @@ pub mod error;
 pub mod plan;
 pub mod projection;
 pub mod projector;
+pub mod server;
 pub mod summary;
 
 // `pub use` re-exports an item so callers can write `financials_mcp::Error`
