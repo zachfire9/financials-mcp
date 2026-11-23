@@ -18,6 +18,7 @@ This is a learning project, built one reviewable step at a time. Each step teach
 - **Step 12 (sweep):** a `sweep` tool varies one input across up to 25 values and reports the **breakpoints** where the plan stops (or starts) lasting. See [Sweeps](#sweeps).
 - **Step 13 (max spending):** a `find_max_spending` tool searches for the most a plan can spend each year while keeping an optional minimum balance. See [Maximum spending](#maximum-spending).
 - **Step 14 (withdrawal order):** a `withdrawal_order_options` tool compares the orders the accounts could be drawn down in and ranks them. See [Withdrawal order](#withdrawal-order).
+- **Step 15 (model guidance):** the server instructions and every tool description were rewritten as a set, and every limit's error suggests a fix. See [What the model is told](#what-the-model-is-told).
 
 ## Requirements
 
@@ -171,6 +172,18 @@ It returns one compact point per value (`lastsThroughFinalYear`, `depletionYear`
 - **Ranking:** lasts through the final year, then latest depletion year, fewest years short, highest ending balance, least unfunded spending. Ties keep the current order first.
 - **Each option:** a description in words, `headline` numbers, `changeFromCurrent` and the `withdrawalPriority` per account, ready for the `set_item` override.
 - **Limitation:** projections include no taxes, so the ranking reflects returns and access dates only, not tax-driven advice such as "Roth last."
+
+## What the model is told
+
+When a client connects, the server sends instructions ([`src/guidance.rs`](src/guidance.rs)) that apply across tools:
+
+- **Every number comes from a tool.** Never estimate or interpolate a projection.
+- **Ask about goals first** (retire earliest, spend most, biggest buffer, leave money behind), then present trade-offs rather than one "best" plan. This isn't financial advice.
+- **Pick the right tool,** and prefer one batch call over many `run_projection` calls.
+- **State the assumptions and limitations every time:** a fixed return each year (no downturns or sequence-of-returns risk), no taxes, and no Social Security or pensions unless the plan includes them.
+- **On an error, correct the call and retry.** Every limit's error says how to fix it, for example "give between 1 and 12 scenarios; split a longer list into several calls".
+
+Each tool's description comes from its doc comment in `src/server.rs`. Tests check that the instructions cover each rule and that no implementation notes leak into descriptions or schemas.
 
 ## Commands
 

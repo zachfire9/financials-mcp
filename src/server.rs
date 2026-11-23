@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::compare::{Scenario, ScenarioRow, compare_scenarios};
 use crate::error::Error;
+use crate::guidance::INSTRUCTIONS;
 use crate::max_spending::{Constraints, MaxSpending, find_max_spending};
 use crate::overrides::{Override, apply_overrides};
 use crate::plan::Plan;
@@ -33,18 +34,6 @@ use crate::projector::{Projector, project_and_summarize};
 use crate::summary::Summary;
 use crate::sweep::{Parameter, Sweep, SweepResult, run_sweep};
 use crate::withdrawal_order::{WithdrawalOrderOptions, withdrawal_order_options};
-
-/// What the model reads when it connects. Kept short; Step 15 refines it.
-pub const INSTRUCTIONS: &str = "\
-Retirement projection tools backed by the financials-api engine. \
-Use these tools for every number: never estimate or calculate a projection yourself. \
-A plan is the financials-api projection request: money in integer cents, rates in basis points (700 = 7%). \
-Results are in whole dollars. Projections use fixed annual returns and no taxes, \
-so mention those limitations and the assumptions returned with each result. \
-To compare options, prefer one compare_scenarios call over several run_projection calls; \
-to find where a plan stops working, use sweep; \
-for the most a plan can spend, use find_max_spending rather than guessing amounts; \
-for which account to draw from first, use withdrawal_order_options.";
 
 /// Arguments for `run_projection`.
 ///
@@ -267,17 +256,19 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         }
     }
 
-    /// Run one retirement projection for a plan and return a compact summary
-    /// (does the money last, when does it run short, lowest balance, totals)
-    /// plus the assumptions it used. Amounts are whole dollars. Pass
-    /// `overrides` to project a "what if" (retire earlier, spend less, lower
-    /// returns) without rewriting the plan.
-    ///
-    /// A `#[tool]` method's doc comment becomes the tool's description; its
-    /// `Parameters<T>` argument becomes the input schema (from `T`'s
-    /// `JsonSchema`). `annotations(...)` are hints clients can show or use:
-    /// this tool only reads and computes, so it's read-only, safe to retry,
-    /// and touches nothing outside the projection engine.
+    /// Project one retirement plan and summarize it: does the money last, the
+    /// year it first runs short, years short, lowest and ending balances, and
+    /// totals withdrawn and unfunded, plus the assumptions used. Use for a single
+    /// plan, or one what-if via `overrides` (retire earlier, spend less, lower
+    /// returns, add an expense) without rewriting the plan. For several options,
+    /// use compare_scenarios instead. Plan money is in cents; results are whole
+    /// dollars.
+    // A `#[tool]` method's doc comment (above) becomes the tool's description,
+    // so it's written for the model; Rust notes go in `//` comments like this.
+    // Its `Parameters<T>` argument becomes the input schema (from `T`'s
+    // `JsonSchema`). `annotations(...)` are hints clients can show or use: the
+    // tool only reads and computes, so it's read-only, safe to retry, and
+    // touches nothing outside the projection engine.
     #[tool(annotations(
         title = "Run a retirement projection",
         read_only_hint = true,
@@ -298,12 +289,13 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         Ok(tool_result(self.project(args).await))
     }
 
-    /// Compare a baseline plan with up to 12 named scenarios in one call.
-    /// Each scenario is a list of overrides (the same ones `run_projection`
-    /// accepts). Returns the baseline's summary and assumptions, then one row
-    /// per scenario, in order: its summary and its change from the baseline
-    /// (positive = later, more or bigger), or an error for that scenario
-    /// alone. Amounts are whole dollars.
+    /// Compare a baseline plan with up to 12 named what-if scenarios in one
+    /// call. Each scenario is a name and a list of overrides (the same ones
+    /// run_projection accepts). Returns the baseline's summary and assumptions,
+    /// then one row per scenario in request order: its summary and
+    /// `changeFromBaseline` (scenario minus baseline; positive = later, more or
+    /// bigger), or an error for that scenario alone. Use this instead of several
+    /// run_projection calls. Results are whole dollars.
     #[tool(annotations(
         title = "Compare retirement scenarios",
         read_only_hint = true,
@@ -318,13 +310,14 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         Ok(tool_result(self.compare(args).await))
     }
 
-    /// Vary one input across up to 25 ascending values and show where the
-    /// plan stops (or starts) lasting through its final year. Parameters:
-    /// `annual_withdrawal` (cents), `retirement_shift` (years, + is later),
-    /// `return_adjustment` (basis points added to every return),
-    /// `expense_scale` (percent of current spending). Returns one compact
-    /// point per value and the breakpoints: neighboring values where the
-    /// outcome changes (`lastsAt` / `shortAt`). Amounts are whole dollars.
+    /// Vary one input across up to 25 ascending values to find where the plan
+    /// stops (or starts) lasting through its final year. `parameter` is
+    /// `annual_withdrawal` (cents), `retirement_shift` (years, + = later),
+    /// `return_adjustment` (basis points added to every return) or
+    /// `expense_scale` (percent of current spending). Returns one compact point
+    /// per value and the `breakpoints`: neighboring values where the outcome
+    /// changes (`lastsAt` / `shortAt`); sweep again with finer values between
+    /// them to narrow it down. Results are whole dollars.
     #[tool(annotations(
         title = "Sweep one input across a range",
         read_only_hint = true,
@@ -339,15 +332,15 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         Ok(tool_result(self.run_sweep(args).await))
     }
 
-    /// Find the most a plan can spend each year while meeting optional
-    /// constraints: no unfunded years and a minimum balance
-    /// (`minBalanceCents`, default 0) in every year after the first
-    /// retirement through `throughYear` (default the final year). Searches by
-    /// running projections (at most 25) to within $100. Spending is
-    /// `annualWithdrawalCents`, or for itemized plans the sum of expenses, all
-    /// scaled together. Returns the amount, the summary at that amount, and
-    /// the projections used. `outcome` is `found`, `fails_at_zero` (no amount
-    /// works) or `no_upper_limit`.
+    /// Find the most a plan can spend each year by searching with projections
+    /// (at most 25, to within $100); use this instead of guessing amounts.
+    /// Spending is `annualWithdrawalCents`, or for itemized plans every expense
+    /// scaled together. Optional `constraints`: a balance of at least
+    /// `minBalanceCents` (default 0) and no unfunded years, in every year from
+    /// the first retirement through `throughYear` (default the final year);
+    /// years after `throughYear` aren't checked. Returns `outcome` (`found`,
+    /// `fails_at_zero` or `no_upper_limit`), the amount in cents and dollars,
+    /// the summary at that amount, and the projections used.
     #[tool(annotations(
         title = "Find the maximum annual spending",
         read_only_hint = true,
@@ -364,15 +357,14 @@ impl<P: Projector + 'static> FinancialsServer<P> {
 
     /// Compare the orders the plan's accounts could be drawn down in: the
     /// current order, all accounts together (in proportion to balances), each
-    /// account first, each account last and, for up to 3 accounts, every
-    /// strict order. At most 13 distinct orders, ranked best first by how
-    /// long the money lasts, then ending balance. Each option has a
-    /// description, headline numbers, its change from the current order, and
-    /// the `withdrawalPriority` per account (usable with the `set_item`
-    /// override). Amounts are whole dollars. Rankings reflect each account's
-    /// returns and access dates only: projections include no taxes, so
-    /// tax-driven orders (such as taxable first, Roth last) aren't captured;
-    /// say so when presenting them.
+    /// account first, each account last and, for up to 3 accounts, every strict
+    /// order (at most 13). Ranked best first by how long the money lasts, then
+    /// ending balance. Each option has a description, headline numbers, its
+    /// change from the current order, and each account's `withdrawalPriority`
+    /// (usable with the `set_item` override). Rankings reflect returns and
+    /// access dates only: projections include no taxes, so tax-driven orders
+    /// (such as Roth last) aren't captured; say so when presenting them.
+    /// Results are whole dollars.
     #[tool(annotations(
         title = "Compare withdrawal orders",
         read_only_hint = true,
@@ -570,12 +562,36 @@ mod tests {
         let server = info.server_info.as_ref().expect("server info");
         assert_eq!(server.name, "financials-mcp");
         assert_eq!(server.version, env!("CARGO_PKG_VERSION"));
-        assert!(
-            info.instructions
-                .as_deref()
-                .unwrap()
-                .contains("never estimate")
-        );
+        assert_eq!(info.instructions.as_deref(), Some(INSTRUCTIONS));
+    }
+
+    #[tokio::test]
+    async fn every_tool_has_a_model_facing_description_and_read_only_hints() {
+        let client = connect(FakeProjector::scripted(Vec::new())).await;
+        let tools = client.list_all_tools().await.unwrap();
+        assert_eq!(tools.len(), 5);
+
+        for tool in &tools {
+            let name = tool.name.as_ref();
+            let description = tool.description.as_deref().unwrap_or_default();
+            assert!(description.len() > 100, "{name}: description too short");
+            assert!(description.contains("dollars"), "{name}: no units");
+
+            // Rust notes belong in `//` comments, never in what the model
+            // reads: check descriptions and input schemas.
+            let schema = serde_json::to_string(&tool.input_schema).unwrap();
+            for leak in ["Rust", "#[", "Parameters<", "serde", "borrow"] {
+                assert!(!description.contains(leak), "{name} description: {leak}");
+                assert!(!schema.contains(leak), "{name} schema: {leak}");
+            }
+
+            let hints = tool.annotations.as_ref().expect("annotations");
+            assert!(hints.title.is_some(), "{name}: no title");
+            assert_eq!(hints.read_only_hint, Some(true), "{name}");
+            assert_eq!(hints.destructive_hint, Some(false), "{name}");
+            assert_eq!(hints.idempotent_hint, Some(true), "{name}");
+            assert_eq!(hints.open_world_hint, Some(false), "{name}");
+        }
     }
 
     #[tokio::test]
@@ -609,7 +625,7 @@ mod tests {
             tool.description
                 .as_deref()
                 .unwrap()
-                .contains("retirement projection")
+                .contains("retirement plan")
         );
         let annotations = tool.annotations.as_ref().expect("annotations");
         assert_eq!(annotations.read_only_hint, Some(true));
@@ -774,7 +790,7 @@ mod tests {
         assert_eq!(result.is_error, Some(true));
         assert_eq!(
             text_of(&result),
-            "overrides[0] (set_item): no item with id `item-boat` (items without an id can't be changed)"
+            "overrides[0] (set_item): no item with id `item-boat`; use an `id` from the plan's `items` (items without an id can't be changed)"
         );
 
         let result = call_with(
@@ -848,7 +864,7 @@ mod tests {
         assert_eq!(result.is_error, Some(true));
         assert_eq!(
             text_of(&result),
-            "scenario problem at `scenarios`: give between 1 and 12 scenarios"
+            "scenario problem at `scenarios`: give between 1 and 12 scenarios; split a longer list into several calls"
         );
     }
 
@@ -919,7 +935,7 @@ mod tests {
         assert_eq!(result.is_error, Some(true));
         assert_eq!(
             text_of(&result),
-            "sweep problem at `values[1]`: values must be in strictly ascending order"
+            "sweep problem at `values[1]`: values must be in strictly ascending order; sort them and remove duplicates"
         );
     }
 

@@ -81,7 +81,9 @@ impl Sweep {
         if self.values.is_empty() || self.values.len() > MAX_VALUES {
             return Err(shape(
                 "values",
-                format!("give between 1 and {MAX_VALUES} values"),
+                format!(
+                    "give between 1 and {MAX_VALUES} values; sweep a coarse range first, then finer values around the breakpoint"
+                ),
             ));
         }
         // `windows(2)` yields every overlapping pair of neighbors: [a, b],
@@ -90,7 +92,8 @@ impl Sweep {
         if let Some(index) = self.values.windows(2).position(|pair| pair[0] >= pair[1]) {
             return Err(shape(
                 &format!("values[{}]", index + 1),
-                "values must be in strictly ascending order".to_string(),
+                "values must be in strictly ascending order; sort them and remove duplicates"
+                    .to_string(),
             ));
         }
         Ok(())
@@ -450,18 +453,18 @@ mod tests {
     fn values_are_checked() {
         assert_eq!(
             sweep_error(r#"{"parameter": "expense_scale", "values": []}"#),
-            "sweep problem at `values`: give between 1 and 25 values"
+            "sweep problem at `values`: give between 1 and 25 values; sweep a coarse range first, then finer values around the breakpoint"
         );
         let many: Vec<i64> = (0..26).collect();
         assert_eq!(
             sweep_error(&format!(
                 r#"{{"parameter": "expense_scale", "values": {many:?}}}"#
             )),
-            "sweep problem at `values`: give between 1 and 25 values"
+            "sweep problem at `values`: give between 1 and 25 values; sweep a coarse range first, then finer values around the breakpoint"
         );
         assert_eq!(
             sweep_error(r#"{"parameter": "expense_scale", "values": [80, 90, 90]}"#),
-            "sweep problem at `values[2]`: values must be in strictly ascending order"
+            "sweep problem at `values[2]`: values must be in strictly ascending order; sort them and remove duplicates"
         );
         assert!(
             sweep_error(r#"{"parameter": "spending", "values": [1]}"#)

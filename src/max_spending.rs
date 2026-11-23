@@ -254,7 +254,7 @@ pub async fn find_max_spending<P: Projector>(
     };
     if !plan.uses_phase_projection() {
         return Err(invalid(
-            "only works for plans with saving and drawdown phases (this plan uses `years`)",
+            "only works for plans with saving and drawdown phases (this plan uses `years`); use savingYears and drawdownYears instead of years",
         ));
     }
     if constraints.min_balance_cents < 0 {
@@ -278,7 +278,7 @@ pub async fn find_max_spending<P: Projector>(
         let total: i64 = plan.expenses.iter().map(|e| e.annual_amount_cents).sum();
         if total == 0 {
             return Err(invalid(
-                "the itemized expenses add up to $0, so there's nothing to scale",
+                "the itemized expenses add up to $0, so there's nothing to scale; give the expenses amounts first",
             ));
         }
         (

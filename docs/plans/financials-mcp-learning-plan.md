@@ -449,9 +449,9 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 15 — Model guidance and tool descriptions
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-15-model-guidance`
-- **Pull Request:** TBD
+- **Pull Request:** PR_LINK
 - **Concept:** Tool descriptions and server instructions are part of the program: they decide how well the model uses the tools.
 - **Rust introduced:** `const` strings and documentation comments, plus a test that checks the guidance text.
 - **Functionality:**

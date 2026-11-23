@@ -175,7 +175,9 @@ impl Override {
         if overrides.len() > MAX_OVERRIDES {
             return Err(Error::OverrideShape {
                 location: "overrides".to_string(),
-                problem: format!("at most {MAX_OVERRIDES} overrides are allowed"),
+                problem: format!(
+                    "at most {MAX_OVERRIDES} overrides are allowed; split them across scenarios with compare_scenarios"
+                ),
             });
         }
         Ok(overrides)
@@ -205,7 +207,11 @@ impl Override {
                             .people
                             .iter_mut()
                             .find(|person| person.id == *id)
-                            .ok_or_else(|| format!("no person with id `{id}`"))?;
+                            .ok_or_else(|| {
+                                format!(
+                                    "no person with id `{id}`; use an `id` from the plan's `people`"
+                                )
+                            })?;
                         person.saving_years = add_years(person.saving_years, *years)?;
                     }
                     None if plan.people.is_empty() => {
@@ -259,7 +265,7 @@ impl Override {
                 require_phases(plan)?;
                 if !expense.id.is_empty() && plan.expenses.iter().any(|e| e.id == expense.id) {
                     return Err(format!(
-                        "an expense with id `{}` already exists",
+                        "an expense with id `{}` already exists; choose a new id, or use set_expense to change it",
                         expense.id
                     ));
                 }
@@ -274,7 +280,7 @@ impl Override {
                     .expenses
                     .iter()
                     .position(|expense| expense.id == *expense_id)
-                    .ok_or_else(|| format!("no expense with id `{expense_id}`"))?;
+                    .ok_or_else(|| format!("no expense with id `{expense_id}`; use an `id` from the plan's `expenses`"))?;
                 plan.expenses.remove(index);
             }
 
@@ -290,7 +296,7 @@ impl Override {
                     && from_year.is_none()
                     && to_year.is_none()
                 {
-                    return Err("give at least one field to change".to_string());
+                    return Err("give at least one field to change besides the id".to_string());
                 }
                 let expense = find_expense(plan, expense_id)?;
                 // `if let Some(x) = option` runs only when there's a value.
@@ -352,7 +358,7 @@ impl Override {
                     && drawdown_annual_return_rate_basis_points.is_none()
                     && withdrawal_priority.is_none()
                 {
-                    return Err("give at least one field to change".to_string());
+                    return Err("give at least one field to change besides the id".to_string());
                 }
                 if let Some(priority) = withdrawal_priority
                     && !(1..=3).contains(priority)
@@ -365,7 +371,7 @@ impl Override {
                     .find(|item| !item.id.is_empty() && item.id == *item_id)
                     .ok_or_else(|| {
                         format!(
-                            "no item with id `{item_id}` (items without an id can't be changed)"
+                            "no item with id `{item_id}`; use an `id` from the plan's `items` (items without an id can't be changed)"
                         )
                     })?;
                 if let Some(cents) = annual_contribution_cents {
@@ -429,7 +435,7 @@ fn require_phases(plan: &Plan) -> Result<(), String> {
         Ok(())
     } else {
         Err(
-            "only works for plans with saving and drawdown phases (this plan uses `years`)"
+            "only works for plans with saving and drawdown phases (this plan uses `years`); use savingYears and drawdownYears instead of years"
                 .to_string(),
         )
     }
@@ -443,7 +449,7 @@ fn find_expense<'p>(plan: &'p mut Plan, id: &str) -> Result<&'p mut ExpenseInput
     plan.expenses
         .iter_mut()
         .find(|expense| !expense.id.is_empty() && expense.id == id)
-        .ok_or_else(|| format!("no expense with id `{id}`"))
+        .ok_or_else(|| format!("no expense with id `{id}`; use an `id` from the plan's `expenses`"))
 }
 
 /// Adds years without overflowing.
@@ -596,7 +602,7 @@ mod tests {
         let err = Override::list_from_value(many).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "override problem at `overrides`: at most 20 overrides are allowed"
+            "override problem at `overrides`: at most 20 overrides are allowed; split them across scenarios with compare_scenarios"
         );
     }
 
@@ -652,7 +658,7 @@ mod tests {
                 r#"[{"op": "set_inflation", "basisPoints": 300},
                     {"op": "shift_retirement", "years": 1, "personId": "person-c"}]"#
             ),
-            "overrides[1] (shift_retirement): no person with id `person-c`"
+            "overrides[1] (shift_retirement): no person with id `person-c`; use an `id` from the plan's `people`"
         );
         assert_eq!(
             apply_err(&basic(), r#"[{"op": "shift_retirement", "years": -11}]"#),
@@ -678,7 +684,7 @@ mod tests {
 
         assert_eq!(
             apply_err(&simple, r#"[{"op": "shift_retirement", "years": 1}]"#),
-            "overrides[0] (shift_retirement): only works for plans with saving and drawdown phases (this plan uses `years`)"
+            "overrides[0] (shift_retirement): only works for plans with saving and drawdown phases (this plan uses `years`); use savingYears and drawdownYears instead of years"
         );
         // Return changes work for any plan.
         let changed = apply(&simple, r#"[{"op": "adjust_returns", "basisPoints": 100}]"#);
@@ -783,21 +789,21 @@ mod tests {
                 &plan,
                 r#"[{"op": "remove_expense", "expenseId": "expense-boat"}]"#
             ),
-            "overrides[0] (remove_expense): no expense with id `expense-boat`"
+            "overrides[0] (remove_expense): no expense with id `expense-boat`; use an `id` from the plan's `expenses`"
         );
         assert_eq!(
             apply_err(
                 &plan,
                 r#"[{"op": "set_expense", "expenseId": "expense-travel"}]"#
             ),
-            "overrides[0] (set_expense): give at least one field to change"
+            "overrides[0] (set_expense): give at least one field to change besides the id"
         );
         assert_eq!(
             apply_err(
                 &plan,
                 r#"[{"op": "add_expense", "expense": {"id": "expense-travel", "name": "Again", "annualAmountCents": 1}}]"#
             ),
-            "overrides[0] (add_expense): an expense with id `expense-travel` already exists"
+            "overrides[0] (add_expense): an expense with id `expense-travel` already exists; choose a new id, or use set_expense to change it"
         );
         // The rule check catches what the op itself doesn't: the message
         // carries the field rule, not the amount.
@@ -901,7 +907,7 @@ mod tests {
                 &plan,
                 r#"[{"op": "set_item", "itemId": "", "annualContributionCents": 1}]"#
             ),
-            "overrides[0] (set_item): no item with id `` (items without an id can't be changed)"
+            "overrides[0] (set_item): no item with id ``; use an `id` from the plan's `items` (items without an id can't be changed)"
         );
     }
 

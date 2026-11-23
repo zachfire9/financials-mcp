@@ -65,7 +65,9 @@ fn check_scenarios(scenarios: &[Scenario]) -> Result<(), Error> {
     if scenarios.is_empty() || scenarios.len() > MAX_SCENARIOS {
         return Err(shape(
             "scenarios".to_string(),
-            format!("give between 1 and {MAX_SCENARIOS} scenarios"),
+            format!(
+                "give between 1 and {MAX_SCENARIOS} scenarios; split a longer list into several calls"
+            ),
         ));
     }
     // A `HashSet` holds unique values, like a Go `map[string]struct{}` or a
@@ -77,7 +79,7 @@ fn check_scenarios(scenarios: &[Scenario]) -> Result<(), Error> {
         if name.is_empty() {
             return Err(shape(
                 format!("scenarios[{index}].name"),
-                "a name is required".to_string(),
+                "a name is required, such as \"Retire 2 years earlier\"".to_string(),
             ));
         }
         // `.chars().count()` counts characters; `.len()` would count bytes,
@@ -85,13 +87,13 @@ fn check_scenarios(scenarios: &[Scenario]) -> Result<(), Error> {
         if name.chars().count() > MAX_NAME_CHARS {
             return Err(shape(
                 format!("scenarios[{index}].name"),
-                format!("names can be at most {MAX_NAME_CHARS} characters"),
+                format!("names can be at most {MAX_NAME_CHARS} characters; use a shorter label"),
             ));
         }
         if !seen.insert(name) {
             return Err(shape(
                 format!("scenarios[{index}].name"),
-                "scenario names must be unique".to_string(),
+                "scenario names must be unique; give each scenario a different name".to_string(),
             ));
         }
     }
@@ -369,7 +371,7 @@ mod tests {
         );
         assert_eq!(
             failed(&comparison.scenarios[1]),
-            "overrides[0] (remove_expense): no expense with id `expense-boat`"
+            "overrides[0] (remove_expense): no expense with id `expense-boat`; use an `id` from the plan's `expenses`"
         );
         projected(&comparison.scenarios[2]);
         // The bad override was never sent: baseline + two scenarios.
@@ -380,7 +382,7 @@ mod tests {
             json["scenarios"][1],
             serde_json::json!({
                 "name": "Bad override",
-                "error": "overrides[0] (remove_expense): no expense with id `expense-boat`"
+                "error": "overrides[0] (remove_expense): no expense with id `expense-boat`; use an `id` from the plan's `expenses`"
             })
         );
         assert!(
@@ -433,25 +435,25 @@ mod tests {
 
         assert_eq!(
             scenario_error("[]"),
-            "scenario problem at `scenarios`: give between 1 and 12 scenarios"
+            "scenario problem at `scenarios`: give between 1 and 12 scenarios; split a longer list into several calls"
         );
         let thirteen: Vec<String> = (0..13).map(|n| format!("S{n}")).collect();
         let thirteen: Vec<&str> = thirteen.iter().map(String::as_str).collect();
         assert_eq!(
             scenario_error(&named(&thirteen)),
-            "scenario problem at `scenarios`: give between 1 and 12 scenarios"
+            "scenario problem at `scenarios`: give between 1 and 12 scenarios; split a longer list into several calls"
         );
         assert_eq!(
             scenario_error(&named(&["A", "  "])),
-            "scenario problem at `scenarios[1].name`: a name is required"
+            "scenario problem at `scenarios[1].name`: a name is required, such as \"Retire 2 years earlier\""
         );
         assert_eq!(
             scenario_error(&named(&["Same", "Same "])),
-            "scenario problem at `scenarios[1].name`: scenario names must be unique"
+            "scenario problem at `scenarios[1].name`: scenario names must be unique; give each scenario a different name"
         );
         assert_eq!(
             scenario_error(&named(&[&"x".repeat(81)])),
-            "scenario problem at `scenarios[0].name`: names can be at most 80 characters"
+            "scenario problem at `scenarios[0].name`: names can be at most 80 characters; use a shorter label"
         );
         // No overrides is allowed: that row is the baseline again.
         assert_eq!(scenarios(&named(&["As is"]))[0].overrides, []);
