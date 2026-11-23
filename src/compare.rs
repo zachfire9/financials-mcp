@@ -2,40 +2,25 @@
 //! concurrently.
 //!
 //! A scenario is a name and a list of [`Override`]s. [`compare_scenarios`]
-//! projects the baseline plan and every scenario, at most
-//! [`MAX_CONCURRENT`] at a time, and returns one row per scenario with its
-//! summary and its change from the baseline. A scenario that fails (a bad
-//! override, an API error) becomes an error row; the others still run.
-//!
-//! # Concurrency, not parallelism
-//!
-//! The server runs on tokio's single-threaded runtime (`current_thread` in
-//! `main.rs`), and that's enough: a projection spends nearly all its time
-//! waiting for financials-api to answer. While one task waits, the runtime
-//! runs another, so four requests are in flight at once on one thread. Go
-//! would start goroutines; Python would `asyncio.gather` coroutines. No
-//! extra threads (`rt-multi-thread`) are needed for work that's mostly
-//! waiting.
+//! projects the baseline plan and every scenario (concurrently, through
+//! [`project_all`]) and returns one row per scenario with its summary and its
+//! change from the baseline. A scenario that fails (a bad override, an API
+//! error) becomes an error row; the others still run.
 
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-use tokio::sync::Semaphore;
-use tokio::task::JoinSet;
-
+use crate::batch::project_all;
 use crate::error::Error;
 use crate::overrides::{Override, apply_overrides};
 use crate::plan::Plan;
-use crate::projector::{Projector, project_and_summarize};
+use crate::projector::Projector;
 use crate::summary::Summary;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 /// Most scenarios per call (plus the baseline, 13 projections).
 pub const MAX_SCENARIOS: usize = 12;
-
-/// Most projections in flight at once, to be polite to financials-api.
-pub const MAX_CONCURRENT: usize = 4;
 
 /// Longest scenario name accepted, in characters.
 const MAX_NAME_CHARS: usize = 80;
@@ -185,16 +170,11 @@ impl Change {
     }
 }
 
-/// Projects `plan` and every scenario, at most [`MAX_CONCURRENT`] at once.
+/// Projects `plan` and every scenario, concurrently.
 ///
 /// The baseline must succeed, since every row is compared with it: a bad base
 /// plan or a failed baseline projection fails the whole call. A failing
 /// scenario only fails its own row.
-///
-/// `projector: Arc<P>` is *shared ownership*: each spawned task gets its own
-/// `Arc` clone (a pointer copy plus a reference count), and the projector is
-/// dropped when the last one is gone. Spawned tasks can't borrow from this
-/// function, because they might outlive it; owning an `Arc` solves that.
 pub async fn compare_scenarios<P: Projector + 'static>(
     projector: Arc<P>,
     plan: &Plan,
@@ -215,59 +195,7 @@ pub async fn compare_scenarios<P: Projector + 'static>(
         )
         .collect();
 
-    // One slot per run, filled in as results arrive in whatever order.
-    let mut results: Vec<Option<Result<Summary, Error>>> = prepared.iter().map(|_| None).collect();
-
-    // A semaphore holds `MAX_CONCURRENT` permits. Each task waits for a
-    // permit before projecting and gives it back when the permit is dropped,
-    // so at most four projections run at once. Go would use a buffered
-    // channel as a semaphore; Python, `asyncio.Semaphore`.
-    let permits = Arc::new(Semaphore::new(MAX_CONCURRENT));
-    // A `JoinSet` owns a group of spawned tasks and hands back their results
-    // as they finish, like a Go `errgroup` or Python's `asyncio.as_completed`.
-    let mut tasks = JoinSet::new();
-
-    for (index, run) in prepared.into_iter().enumerate() {
-        match run {
-            Err(err) => results[index] = Some(Err(err)),
-            Ok(run_plan) => {
-                let projector = Arc::clone(&projector);
-                let permits = Arc::clone(&permits);
-                // `async move` makes a future that *owns* everything it uses
-                // (`projector`, `permits`, `run_plan`, `index`). `spawn`
-                // requires that (`'static`): the task may run after this loop
-                // iteration, or even this function, has moved on.
-                tasks.spawn(async move {
-                    // Held until the end of the block, then dropped, which
-                    // returns the permit. The semaphore is never closed, so
-                    // `acquire_owned` can't fail.
-                    let _permit = permits
-                        .acquire_owned()
-                        .await
-                        .expect("the semaphore is never closed");
-                    (index, project_and_summarize(&*projector, &run_plan).await)
-                });
-            }
-        }
-    }
-
-    // `join_next` waits for the next task to finish, in completion order.
-    // Each result carries its index, so it goes back in its own slot and the
-    // rows come out in request order. An `Err` here means the task itself
-    // panicked; its slot stays empty and is reported below.
-    while let Some(joined) = tasks.join_next().await {
-        if let Ok((index, result)) = joined {
-            results[index] = Some(result);
-        }
-    }
-
-    let mut results = results.into_iter().map(|slot| {
-        slot.unwrap_or_else(|| {
-            Err(Error::Server {
-                problem: "a projection task stopped unexpectedly".to_string(),
-            })
-        })
-    });
+    let mut results = project_all(projector, prepared).await.into_iter();
 
     // The first result is the baseline; `?` fails the whole call if it did.
     let baseline = results.next().expect("the baseline is always run")?;
@@ -297,8 +225,6 @@ pub async fn compare_scenarios<P: Projector + 'static>(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
     use super::*;
     use crate::projection::Projection;
     use crate::projector::FakeProjector;
@@ -413,87 +339,6 @@ mod tests {
         assert!(json.get("depletionYear").is_none(), "{json}");
     }
 
-    /// A projector that counts how many projections are running at once.
-    ///
-    /// `AtomicUsize` is an integer that many tasks can update safely without a
-    /// lock (like Go's `atomic.Int64`). Each projection yields to the runtime
-    /// several times, so other tasks get to start while it's "in flight";
-    /// plans with fewer drawdown years yield more, so later scenarios finish
-    /// first. Its ending balance is the plan's drawdown years, in dollars, so
-    /// a test can tell which plan a row came from.
-    #[derive(Default)]
-    struct CountingProjector {
-        in_flight: AtomicUsize,
-        max_in_flight: AtomicUsize,
-        calls: AtomicUsize,
-    }
-
-    impl Projector for CountingProjector {
-        async fn project(&self, plan: &Plan) -> Result<Projection, Error> {
-            self.calls.fetch_add(1, Ordering::SeqCst);
-            let now = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
-            self.max_in_flight.fetch_max(now, Ordering::SeqCst);
-
-            for _ in 0..(60 - plan.drawdown_years) {
-                tokio::task::yield_now().await;
-            }
-
-            self.in_flight.fetch_sub(1, Ordering::SeqCst);
-            let mut result = projection(PROJECTION_BASIC);
-            let last = result.totals.last_mut().unwrap();
-            last.balance_cents = i64::from(plan.drawdown_years) * 100;
-            Ok(result)
-        }
-    }
-
-    /// `count` scenarios, each setting drawdown to 21, 22, 23, ...
-    fn drawdown_scenarios(count: usize) -> Vec<Scenario> {
-        (0..count)
-            .map(|n| Scenario {
-                name: format!("Drawdown {}", 21 + n),
-                overrides: vec![Override::SetDrawdownYears {
-                    years: 21 + n as i32,
-                }],
-            })
-            .collect()
-    }
-
-    #[tokio::test]
-    async fn no_more_than_four_projections_run_at_once() {
-        let projector = Arc::new(CountingProjector::default());
-
-        let comparison = compare_scenarios(
-            Arc::clone(&projector),
-            &plan(),
-            &drawdown_scenarios(MAX_SCENARIOS),
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(projector.calls.load(Ordering::SeqCst), 13);
-        // Exactly 4: the limit holds, *and* they really did run concurrently.
-        assert_eq!(projector.max_in_flight.load(Ordering::SeqCst), 4);
-        assert_eq!(comparison.scenarios.len(), 12);
-    }
-
-    #[tokio::test]
-    async fn rows_stay_in_request_order_when_tasks_finish_out_of_order() {
-        let projector = Arc::new(CountingProjector::default());
-
-        let comparison = compare_scenarios(projector, &plan(), &drawdown_scenarios(8))
-            .await
-            .unwrap();
-
-        // Each row's ending balance is its own plan's drawdown years, even
-        // though higher drawdowns finished first.
-        for (n, row) in comparison.scenarios.iter().enumerate() {
-            let (summary, _) = projected(row);
-            assert_eq!(row.name, format!("Drawdown {}", 21 + n));
-            assert_eq!(summary.ending_balance, 21 + n as i64);
-        }
-        assert_eq!(comparison.baseline.ending_balance, 30);
-    }
-
     #[tokio::test]
     async fn one_failed_scenario_does_not_fail_the_others() {
         let fake = FakeProjector::from_fn(|plan| {
@@ -544,10 +389,16 @@ mod tests {
         );
     }
 
+    fn one_scenario() -> Vec<Scenario> {
+        scenarios(
+            r#"[{"name": "Lower returns", "overrides": [{"op": "adjust_returns", "basisPoints": -100}]}]"#,
+        )
+    }
+
     #[tokio::test]
     async fn a_failed_baseline_fails_the_call() {
         let fake = FakeProjector::scripted(vec![Err(Error::Auth)]);
-        let result = compare_scenarios(Arc::new(fake), &plan(), &drawdown_scenarios(1)).await;
+        let result = compare_scenarios(Arc::new(fake), &plan(), &one_scenario()).await;
         assert!(matches!(result, Err(Error::Auth)), "{result:?}");
     }
 
@@ -557,7 +408,7 @@ mod tests {
         bad.drawdown_years = 99;
         let fake = Arc::new(FakeProjector::scripted(Vec::new()));
 
-        let err = compare_scenarios(Arc::clone(&fake), &bad, &drawdown_scenarios(1))
+        let err = compare_scenarios(Arc::clone(&fake), &bad, &one_scenario())
             .await
             .unwrap_err();
 

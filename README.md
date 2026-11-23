@@ -15,6 +15,7 @@ This is a learning project, built one reviewable step at a time. Each step teach
 - **Step 09 (MCP server):** `financials-mcp serve` speaks MCP over stdio with one tool, `run_projection`.
 - **Step 10 (overrides):** `run_projection` takes optional `overrides` (retire earlier, spend less, lower returns, add an expense, and more) applied to a copy of the plan. See [Overrides](#overrides).
 - **Step 11 (compare scenarios):** a `compare_scenarios` tool runs a baseline plus up to 12 named scenarios concurrently (at most 4 projections at once) and reports each one's change from the baseline. See [Comparing scenarios](#comparing-scenarios).
+- **Step 12 (sweep):** a `sweep` tool varies one input across up to 25 values and reports the **breakpoints** where the plan stops (or starts) lasting. See [Sweeps](#sweeps).
 
 ## Requirements
 
@@ -81,7 +82,7 @@ cargo build --release      # -> target\release\financials-mcp.exe
 claude mcp add --transport stdio --env FINANCIALS_API_URL=http://localhost:8080 financials -- C:\path\to\financials-mcp\target\release\financials-mcp.exe serve
 ```
 
-Add `--scope user` to make it available in every project (the default scope is the current project only). Then ask something like *"Run a projection for this plan and tell me whether the money lasts"* and attach or paste a plan JSON. Then follow up with *"What if I retired 2 years earlier?"* or *"Compare retiring 2 years earlier against returns 1% lower."*
+Add `--scope user` to make it available in every project (the default scope is the current project only). Then ask something like *"Run a projection for this plan and tell me whether the money lasts"* and attach or paste a plan JSON. Then follow up with *"What if I retired 2 years earlier?"* or *"Compare retiring 2 years earlier against returns 1% lower,"* or *"How much later would we need to retire for the money to last?"*
 
 ## Overrides
 
@@ -129,6 +130,23 @@ The result's `assumptions` describe the changed plan and echo the overrides. Err
 It returns the baseline's summary and assumptions, then one row per scenario in request order: its summary plus `changeFromBaseline` (scenario minus baseline: `depletionYear`, `yearsShort`, `endingBalance`, `lowestBalance`, `totalUnfunded`; positive means later, more or bigger). A scenario whose overrides don't apply, or whose projection fails, gets an `error` row instead and doesn't affect the others. A bad base plan or a failed baseline fails the whole call.
 
 Scenario names must be unique and at most 80 characters. Projections run at most 4 at a time, to be polite to financials-api.
+
+## Sweeps
+
+`sweep` varies one input across 1 to 25 strictly ascending values, in that input's units:
+
+| `parameter` | Values |
+|---|---|
+| `annual_withdrawal` | First-year withdrawal in cents (plans without itemized expenses) |
+| `retirement_shift` | Years to retire later (+) or earlier (−), for everyone; the final year stays fixed |
+| `return_adjustment` | Basis points added to every account's return |
+| `expense_scale` | Drawdown spending as a percent of the plan's (90 = 10% less) |
+
+```json
+{ "plan": { "...": "..." }, "parameter": "retirement_shift", "values": [-4, -2, 0, 1, 2, 4] }
+```
+
+It returns one compact point per value (`lastsThroughFinalYear`, `depletionYear`, `yearsShort`, `endingBalance`, `lowestBalance`, `totalUnfunded`) and the `breakpoints`: each neighboring pair of values where the outcome changes, as `{ "lastsAt": 1, "shortAt": 0 }`. The real threshold lies between the two values, and a finer sweep narrows it down. Every value must be valid and every projection must succeed, since a series with gaps could hide a breakpoint.
 
 ## Commands
 

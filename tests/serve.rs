@@ -56,7 +56,7 @@ fn serve_speaks_mcp_over_stdio_and_nothing_else() {
         .map(|tool| tool["name"].as_str().unwrap())
         .collect();
     names.sort();
-    assert_eq!(names, ["compare_scenarios", "run_projection"]);
+    assert_eq!(names, ["compare_scenarios", "run_projection", "sweep"]);
     for tool in listed {
         assert_eq!(
             tool["annotations"]["readOnlyHint"], true,
