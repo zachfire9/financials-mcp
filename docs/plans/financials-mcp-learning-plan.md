@@ -398,7 +398,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-12-sweep-breakpoints`
-- **Pull Request:** PR_LINK
+- **Pull Request:** [#12](https://github.com/zachfire9/financials-mcp/pull/12)
 - **Concept:** Show where a plan stops working by varying one input across a range.
 - **Rust introduced:** generic helper functions, `impl Iterator`, `windows()` for comparing neighbors.
 - **Functionality:**
