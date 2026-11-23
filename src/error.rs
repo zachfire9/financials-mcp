@@ -104,6 +104,31 @@ pub enum Error {
 }
 
 impl Error {
+    /// A short, fixed name for the kind of error, safe to log.
+    ///
+    /// Messages can include field paths and ids the model sent, so logs
+    /// record only this. The `match` must list every variant: add a variant
+    /// and this stops compiling until it has a name.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Error::InvalidJson { .. } => "invalid_json",
+            Error::PlanShape { .. } => "plan_shape",
+            Error::InvalidPlan { .. } => "invalid_plan",
+            Error::OverrideShape { .. } => "override_shape",
+            Error::ScenarioShape { .. } => "scenario_shape",
+            Error::SweepShape { .. } => "sweep_shape",
+            Error::ConstraintShape { .. } => "constraint_shape",
+            Error::InvalidOverride { .. } => "invalid_override",
+            Error::Auth => "auth",
+            Error::Api { .. } => "api",
+            Error::UnexpectedResponse { .. } => "unexpected_response",
+            Error::PlanFile { .. } => "plan_file",
+            Error::Output => "output",
+            Error::Server { .. } => "server",
+            Error::Config { .. } => "config",
+        }
+    }
+
     /// Converts a JSON parsing error into an [`Error`] without any plan values.
     ///
     /// `path` is where the problem is (`items[0].amountCents`); `serde_path_to_error`

@@ -23,6 +23,7 @@ pub mod compare;
 pub mod config;
 pub mod error;
 pub mod guidance;
+pub mod logging;
 pub mod max_spending;
 pub mod overrides;
 pub mod plan;

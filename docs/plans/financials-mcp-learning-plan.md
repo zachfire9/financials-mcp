@@ -467,14 +467,14 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 16 — Logging without plan contents
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-16-safe-logging`
-- **Pull Request:** TBD
+- **Pull Request:** PR_LINK
 - **Concept:** You need to see what the server did without ever logging private financial data, and in stdio mode logs must never touch stdout.
 - **Rust introduced:** the `tracing` crate (spans, fields, subscribers), writing to stderr, structured fields.
 - **Functionality:**
   - For each tool call, log the tool name, duration, number of projections and error type at `info` level, to stderr.
-  - `RUST_LOG`-style level control.
+  - Level control through `FINANCIALS_MCP_LOG` (a level only; dependencies stay at `warn`, since rmcp logs full requests at `debug`).
   - No plan values, names, amounts or tokens in any log line.
 - **Tests:**
   - A captured log for a tool call contains the expected fields.

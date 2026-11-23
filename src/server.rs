@@ -16,6 +16,7 @@
 //! connects that router to the server's request handling.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -23,10 +24,12 @@ use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabiliti
 use rmcp::{ErrorData, ServerHandler, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use tracing::Instrument;
 
 use crate::compare::{Scenario, ScenarioRow, compare_scenarios};
 use crate::error::Error;
 use crate::guidance::INSTRUCTIONS;
+use crate::logging::{self, Counted};
 use crate::max_spending::{Constraints, MaxSpending, find_max_spending};
 use crate::overrides::{Override, apply_overrides};
 use crate::plan::Plan;
@@ -286,7 +289,9 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         // Problems with the plan or the API are not protocol failures: they're
         // returned as a normal result marked `isError`, so the model reads the
         // message and can fix the plan or explain the problem.
-        Ok(tool_result(self.project(args).await))
+        Ok(self
+            .call("run_projection", |projector| Self::project(projector, args))
+            .await)
     }
 
     /// Compare a baseline plan with up to 12 named what-if scenarios in one
@@ -307,7 +312,11 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         &self,
         Parameters(args): Parameters<CompareScenariosArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        Ok(tool_result(self.compare(args).await))
+        Ok(self
+            .call("compare_scenarios", |projector| {
+                Self::compare(projector, args)
+            })
+            .await)
     }
 
     /// Vary one input across up to 25 ascending values to find where the plan
@@ -329,7 +338,9 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         &self,
         Parameters(args): Parameters<SweepArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        Ok(tool_result(self.run_sweep(args).await))
+        Ok(self
+            .call("sweep", |projector| Self::run_sweep(projector, args))
+            .await)
     }
 
     /// Find the most a plan can spend each year by searching with projections
@@ -352,7 +363,11 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         &self,
         Parameters(args): Parameters<FindMaxSpendingArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        Ok(tool_result(self.max_spending(args).await))
+        Ok(self
+            .call("find_max_spending", |projector| {
+                Self::max_spending(projector, args)
+            })
+            .await)
     }
 
     /// Compare the orders the plan's accounts could be drawn down in: the
@@ -376,32 +391,42 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         &self,
         Parameters(args): Parameters<WithdrawalOrderArgs>,
     ) -> Result<CallToolResult, ErrorData> {
-        Ok(tool_result(self.withdrawal_orders(args).await))
+        Ok(self
+            .call("withdrawal_order_options", |projector| {
+                Self::withdrawal_orders(projector, args)
+            })
+            .await)
     }
 
     async fn withdrawal_orders(
-        &self,
+        projector: Arc<Counted<P>>,
         args: WithdrawalOrderArgs,
     ) -> Result<WithdrawalOrderResult, Error> {
         let plan = Plan::from_json(&args.plan.to_string())?;
-        let options = withdrawal_order_options(Arc::clone(&self.projector), &plan).await?;
+        let options = withdrawal_order_options(projector, &plan).await?;
         Ok(WithdrawalOrderResult {
             options,
             assumptions: Assumptions::from_plan(&plan, Vec::new()),
         })
     }
 
-    async fn max_spending(&self, args: FindMaxSpendingArgs) -> Result<MaxSpendingResult, Error> {
+    async fn max_spending(
+        projector: Arc<Counted<P>>,
+        args: FindMaxSpendingArgs,
+    ) -> Result<MaxSpendingResult, Error> {
         let plan = Plan::from_json(&args.plan.to_string())?;
         let constraints = Constraints::from_value(args.constraints.unwrap_or_default())?;
-        let search = find_max_spending(&*self.projector, &plan, constraints).await?;
+        let search = find_max_spending(&*projector, &plan, constraints).await?;
         Ok(MaxSpendingResult {
             search,
             assumptions: Assumptions::from_plan(&plan, Vec::new()),
         })
     }
 
-    async fn run_sweep(&self, args: SweepArgs) -> Result<SweepToolResult, Error> {
+    async fn run_sweep(
+        projector: Arc<Counted<P>>,
+        args: SweepArgs,
+    ) -> Result<SweepToolResult, Error> {
         let plan = Plan::from_json(&args.plan.to_string())?;
         // `json!` builds a JSON value with Rust expressions inside, so the
         // two fields are parsed together as one `Sweep`.
@@ -409,19 +434,20 @@ impl<P: Projector + 'static> FinancialsServer<P> {
             "parameter": args.parameter,
             "values": args.values,
         }))?;
-        let result = run_sweep(Arc::clone(&self.projector), &plan, &sweep).await?;
+        let result = run_sweep(projector, &plan, &sweep).await?;
         Ok(SweepToolResult {
             sweep: result,
             assumptions: Assumptions::from_plan(&plan, Vec::new()),
         })
     }
 
-    async fn compare(&self, args: CompareScenariosArgs) -> Result<ComparisonResult, Error> {
+    async fn compare(
+        projector: Arc<Counted<P>>,
+        args: CompareScenariosArgs,
+    ) -> Result<ComparisonResult, Error> {
         let plan = Plan::from_json(&args.plan.to_string())?;
         let scenarios = Scenario::list_from_value(args.scenarios)?;
-        // `Arc::clone` hands the comparison its own shared handle to the
-        // projector, which it passes on to each spawned task.
-        let comparison = compare_scenarios(Arc::clone(&self.projector), &plan, &scenarios).await?;
+        let comparison = compare_scenarios(projector, &plan, &scenarios).await?;
         Ok(ComparisonResult {
             baseline: ProjectionResult {
                 summary: comparison.baseline,
@@ -431,9 +457,44 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         })
     }
 
+    /// Runs one tool call with logging: a `tool_call` span tagged with the
+    /// tool name, a fresh [`Counted`] projector, and one `info` line at the
+    /// end with the duration, the projection count and the error kind.
+    ///
+    /// `run` is a closure that receives the counted projector and returns a
+    /// future. The `where` clause spells out what each type must be:
+    /// - `F: FnOnce(...) -> Fut`: called once with the projector;
+    /// - `Fut: Future<Output = Result<T, Error>>`: what it returns, awaited;
+    /// - `+ Send`: rmcp may run tool calls on any thread, so everything held
+    ///   across an `.await` must be sendable between threads.
+    async fn call<T, F, Fut>(&self, tool: &'static str, run: F) -> CallToolResult
+    where
+        T: Serialize + Send,
+        F: FnOnce(Arc<Counted<P>>) -> Fut + Send,
+        Fut: Future<Output = Result<T, Error>> + Send,
+    {
+        let projector = Arc::new(Counted::new(Arc::clone(&self.projector)));
+        let started = Instant::now();
+        // `.instrument(span)` attaches the span to the future: every event
+        // logged while it runs, including each projection's `debug` line and
+        // the final `info` line, is tagged with `tool=...`, across `.await`
+        // points. (Tasks spawned inside don't inherit it automatically;
+        // `batch.rs` passes it on explicitly.)
+        async move {
+            let outcome = run(Arc::clone(&projector)).await;
+            logging::tool_call_finished(started, projector.count(), outcome.as_ref().err());
+            tool_result(outcome)
+        }
+        .instrument(tracing::info_span!("tool_call", tool))
+        .await
+    }
+
     /// Parses, applies overrides, projects and summarizes, using the crate's
     /// own errors.
-    async fn project(&self, args: RunProjectionArgs) -> Result<ProjectionResult, Error> {
+    async fn project(
+        projector: Arc<Counted<P>>,
+        args: RunProjectionArgs,
+    ) -> Result<ProjectionResult, Error> {
         let plan = Plan::from_json(&args.plan.to_string())?;
         // `Option::map` parses the overrides only if they were sent;
         // `transpose` flips `Option<Result<..>>` into `Result<Option<..>>`
@@ -445,9 +506,9 @@ impl<P: Projector + 'static> FinancialsServer<P> {
             .transpose()?
             .unwrap_or_default();
         let plan = apply_overrides(&plan, &overrides)?;
-        // `&*self.projector` turns `&Arc<P>` into `&P`: `*` reaches through
-        // the `Arc` to the projector, `&` borrows it.
-        let summary = project_and_summarize(&*self.projector, &plan).await?;
+        // `&*projector` turns `&Arc<Counted<P>>` into `&Counted<P>`: `*`
+        // reaches through the `Arc` to the projector, `&` borrows it.
+        let summary = project_and_summarize(&*projector, &plan).await?;
         Ok(ProjectionResult {
             summary,
             assumptions: Assumptions::from_plan(&plan, overrides),
@@ -512,7 +573,7 @@ mod tests {
     /// end writes, the other reads, just like the stdin/stdout pair a real
     /// client uses, without a child process. `()` is rmcp's do-nothing client
     /// handler.
-    async fn connect(projector: FakeProjector) -> RunningService<RoleClient, ()> {
+    async fn connect<T: Projector + 'static>(projector: T) -> RunningService<RoleClient, ()> {
         let (server_end, client_end) = tokio::io::duplex(64 * 1024);
         let server = FinancialsServer::new(projector);
         tokio::spawn(async move {
@@ -1033,5 +1094,173 @@ mod tests {
         assert_eq!(options[0]["headline"]["depletionYear"], 36);
         assert_eq!(options[0]["priorities"][2]["itemId"], "item-brokerage");
         assert_eq!(body["assumptions"]["drawdownYears"], 30);
+    }
+
+    /// Calls any tool with the given arguments object.
+    async fn call_tool(
+        client: &RunningService<RoleClient, ()>,
+        name: &'static str,
+        arguments: serde_json::Value,
+    ) -> CallToolResult {
+        client
+            .call_tool(
+                CallToolRequestParams::new(name)
+                    .with_arguments(arguments.as_object().unwrap().clone()),
+            )
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn logs_record_each_tool_call_without_plan_contents() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        // Everything this crate logs, at every level.
+        let (captured, _guard) = crate::logging::capture::start("financials_mcp=trace");
+
+        // The real HTTP client, with a token, against a mock financials-api.
+        let api = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/projections"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(include_str!("../tests/fixtures/projection-household.json")),
+            )
+            .mount(&api)
+            .await;
+        let config = crate::config::Config::from_sources(
+            |key| match key {
+                "FINANCIALS_API_URL" => Some(api.uri()),
+                "FINANCIALS_ACCESS_TOKEN" => Some("tok-SECRET-4242".to_string()),
+                _ => None,
+            },
+            None,
+        )
+        .unwrap();
+        let client = connect(crate::api::ApiProjector::new(&config).unwrap()).await;
+
+        let plan: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/plan-household.json")).unwrap();
+        let shift =
+            serde_json::json!([{"op": "shift_retirement", "years": -1, "personId": "person-a"}]);
+        call_tool(
+            &client,
+            "run_projection",
+            serde_json::json!({"plan": plan, "overrides": shift}),
+        )
+        .await;
+        call_tool(
+            &client,
+            "compare_scenarios",
+            serde_json::json!({"plan": plan, "scenarios": [
+                {"name": "Person A retires earlier", "overrides": shift},
+                {"name": "Travel removed", "overrides": [{"op": "remove_expense", "expenseId": "expense-travel"}]}
+            ]}),
+        )
+        .await;
+        call_tool(
+            &client,
+            "sweep",
+            serde_json::json!({"plan": plan, "parameter": "expense_scale", "values": [80, 90]}),
+        )
+        .await;
+        call_tool(
+            &client,
+            "find_max_spending",
+            serde_json::json!({"plan": plan, "constraints": {"minBalanceCents": 12345678}}),
+        )
+        .await;
+        call_tool(
+            &client,
+            "withdrawal_order_options",
+            serde_json::json!({"plan": plan}),
+        )
+        .await;
+        let failed = call_tool(
+            &client,
+            "run_projection",
+            serde_json::json!({"plan": plan, "overrides": [{"op": "set_item", "itemId": "item-joint-cash", "withdrawalPriority": 9}]}),
+        )
+        .await;
+        assert_eq!(failed.is_error, Some(true));
+
+        let logs = captured.text();
+
+        // One `info` line per tool call, tagged with the tool's span.
+        for (tool, projections) in [
+            ("run_projection", 1),
+            ("compare_scenarios", 3),
+            ("sweep", 2),
+            ("find_max_spending", 1),
+            ("withdrawal_order_options", 13),
+        ] {
+            let line = logs
+                .lines()
+                .find(|line| {
+                    line.contains(&format!("tool=\"{tool}\"")) && line.contains("succeeded")
+                })
+                .unwrap_or_else(|| panic!("no success line for {tool}:\n{logs}"));
+            assert!(
+                line.contains(&format!("projections={projections}")),
+                "{line}"
+            );
+            assert!(line.contains("duration_ms="), "{line}");
+            assert!(line.contains(" INFO "), "{line}");
+        }
+        assert!(
+            logs.contains("tool call failed duration_ms=")
+                && logs.contains("error=\"invalid_override\""),
+            "{logs}"
+        );
+        // Each projection logs at debug, inside its tool's span, including
+        // the ones run in spawned tasks.
+        assert_eq!(logs.matches("projection finished").count(), 20, "{logs}");
+        assert!(
+            logs.lines()
+                .filter(|line| line.contains("projection finished"))
+                .all(|line| line.contains("tool_call{tool=")),
+            "{logs}"
+        );
+
+        // Nothing from the plan, the overrides, the constraints or the config.
+        for private in [
+            "Person A",
+            "Person B",
+            "Example",
+            "Living costs",
+            "Healthcare",
+            "Travel",
+            "person-a",
+            "expense-travel",
+            "item-joint-cash",
+            "item-a-401k",
+            "30000000",
+            "300000",
+            "5500000",
+            "55000",
+            "2500000",
+            "25000",
+            "12345678",
+            "123457",
+            "tok-SECRET-4242",
+            "SECRET",
+            "Retires earlier",
+            "retires earlier",
+        ] {
+            assert!(!logs.contains(private), "logs contain {private:?}:\n{logs}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_default_level_keeps_tool_calls_and_drops_projection_details() {
+        let (captured, _guard) = crate::logging::capture::start(crate::logging::DEFAULT_FILTER);
+        let client = connect(FakeProjector::from_fn(|_| Ok(projection()))).await;
+
+        call(&client, PLAN).await;
+
+        let logs = captured.text();
+        assert!(logs.contains("tool call succeeded"), "{logs}");
+        assert!(!logs.contains("projection finished"), "{logs}");
     }
 }

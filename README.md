@@ -19,6 +19,7 @@ This is a learning project, built one reviewable step at a time. Each step teach
 - **Step 13 (max spending):** a `find_max_spending` tool searches for the most a plan can spend each year while keeping an optional minimum balance. See [Maximum spending](#maximum-spending).
 - **Step 14 (withdrawal order):** a `withdrawal_order_options` tool compares the orders the accounts could be drawn down in and ranks them. See [Withdrawal order](#withdrawal-order).
 - **Step 15 (model guidance):** the server instructions and every tool description were rewritten as a set, and every limit's error suggests a fix. See [What the model is told](#what-the-model-is-told).
+- **Step 16 (safe logging):** `serve` logs one line per tool call to stderr (tool, duration, projections, error kind), never plan contents. See [Logs](#logs).
 
 ## Requirements
 
@@ -40,6 +41,7 @@ Settings come from the process environment, then a local `.env` file (gitignored
 |---|---|---|
 | `FINANCIALS_API_URL` | `http://localhost:8080` | Base URL of financials-api. `http://` is only allowed for `localhost`; other hosts need `https://`. |
 | `FINANCIALS_ACCESS_TOKEN` | *(none)* | Sent as `X-Financials-Access-Token` when set. Never printed. |
+| `FINANCIALS_MCP_LOG` | `info` | Log level for `serve`: `error`, `warn`, `info`, `debug`, `trace` or `off`. Environment only (not `.env`). See [Logs](#logs). |
 
 A variable set in the environment wins over `.env`, even when it's empty (empty means "use the default").
 
@@ -184,6 +186,19 @@ When a client connects, the server sends instructions ([`src/guidance.rs`](src/g
 - **On an error, correct the call and retry.** Every limit's error says how to fix it, for example "give between 1 and 12 scenarios; split a longer list into several calls".
 
 Each tool's description comes from its doc comment in `src/server.rs`. Tests check that the instructions cover each rule and that no implementation notes leak into descriptions or schemas.
+
+## Logs
+
+`financials-mcp serve` logs to **stderr**, since stdout carries the MCP protocol. Claude Desktop and Claude Code save a server's stderr in their MCP logs. At the default `info` level, each tool call gets one line:
+
+```text
+2026-11-22T21:08:24Z  INFO tool_call{tool="find_max_spending"}: tool call succeeded duration_ms=26 projections=12
+2026-11-22T21:08:24Z  INFO tool_call{tool="sweep"}: tool call failed duration_ms=0 projections=0 error="sweep_shape"
+```
+
+`debug` adds a line per projection, with its duration and outcome. Logs never include amounts, names, ids, error messages, the API URL or the token. Only the error's *kind* is recorded.
+
+`FINANCIALS_MCP_LOG` accepts **only a level**, and it applies to this program alone. Other libraries always stay at `warn`, because at `debug` the MCP library logs every request in full, plans included. For the same reason, `RUST_LOG` is ignored, and a value like `debug,rmcp=debug` is rejected with a warning.
 
 ## Commands
 
