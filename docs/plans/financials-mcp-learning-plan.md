@@ -412,13 +412,13 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 13 — `find_max_spending` search
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-13-find-max-spending`
-- **Pull Request:** TBD
+- **Pull Request:** PR_LINK
 - **Concept:** Because the engine is deterministic, the server can search for an answer instead of the model guessing.
 - **Rust introduced:** loops with invariants, writing a pure search function that's generic over the `Projector` trait, careful integer arithmetic.
 - **Functionality:**
-  - The `find_max_spending(plan, constraints)` tool. `minBalance` (default 0) must hold through `throughYear` (default the final year), with no unfunded years.
+  - The `find_max_spending(plan, constraints)` tool. `minBalanceCents` (default 0) must hold in every year from the first retirement through `throughYear` (default the final year), with no unfunded years.
   - Binary search on `annualWithdrawalCents`, or on a scale factor for itemized expenses.
   - Stops at a $100 precision or after 25 projections.
   - Returns the amount, the summary at that amount, and the number of projections used.

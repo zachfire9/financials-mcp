@@ -256,6 +256,15 @@ impl Plan {
                     "gapAnnualWithdrawalCents must be greater than or equal to 0".to_string(),
                 );
             }
+            if self.drawdown_years > 0
+                && self.annual_withdrawal_cents <= 0
+                && self.expenses.is_empty()
+            {
+                problems.push(
+                    "annualWithdrawalCents is required when drawdownYears is greater than 0"
+                        .to_string(),
+                );
+            }
             if !self.expenses.is_empty() && self.annual_withdrawal_cents != 0 {
                 problems
                     .push("annualWithdrawalCents must be 0 when expenses are provided".to_string());
@@ -580,6 +589,35 @@ mod tests {
                 "people[0].savingYears must be between 0 and 75",
             ]
         );
+    }
+
+    #[test]
+    fn drawdown_needs_a_withdrawal_or_expenses() {
+        let plan = minimal_with(|plan| {
+            plan.years = 0;
+            plan.saving_years = 10;
+            plan.drawdown_years = 20;
+        });
+        assert_eq!(
+            problems(&plan),
+            ["annualWithdrawalCents is required when drawdownYears is greater than 0"]
+        );
+        // Itemized expenses replace the withdrawal, even at $0.
+        let itemized = minimal_with(|plan| {
+            plan.years = 0;
+            plan.saving_years = 10;
+            plan.drawdown_years = 20;
+            plan.expenses = vec![ExpenseInput {
+                id: String::new(),
+                name: "Living".into(),
+                annual_amount_cents: 0,
+                inflation_rate_basis_points: None,
+                from_year: 0,
+                to_year: 0,
+                years: 0,
+            }];
+        });
+        assert_eq!(problems(&itemized), Vec::<String>::new());
     }
 
     #[test]

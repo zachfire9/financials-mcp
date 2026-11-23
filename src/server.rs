@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::compare::{Scenario, ScenarioRow, compare_scenarios};
 use crate::error::Error;
+use crate::max_spending::{Constraints, MaxSpending, find_max_spending};
 use crate::overrides::{Override, apply_overrides};
 use crate::plan::Plan;
 use crate::projector::{Projector, project_and_summarize};
@@ -40,7 +41,8 @@ A plan is the financials-api projection request: money in integer cents, rates i
 Results are in whole dollars. Projections use fixed annual returns and no taxes, \
 so mention those limitations and the assumptions returned with each result. \
 To compare options, prefer one compare_scenarios call over several run_projection calls; \
-to find where a plan stops working, use sweep.";
+to find where a plan stops working, use sweep; \
+for the most a plan can spend, use find_max_spending rather than guessing amounts.";
 
 /// Arguments for `run_projection`.
 ///
@@ -111,6 +113,28 @@ pub struct SweepToolResult {
     // `breakpoints`) at the top level, next to `assumptions`.
     #[serde(flatten)]
     pub sweep: SweepResult,
+    pub assumptions: Assumptions,
+}
+
+/// Arguments for `find_max_spending`.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FindMaxSpendingArgs {
+    /// The plan whose spending to maximize.
+    #[schemars(with = "Plan")]
+    pub plan: serde_json::Value,
+    /// Optional: a minimum balance to keep and the last year it applies to.
+    #[serde(default)]
+    #[schemars(with = "Option<Constraints>")]
+    pub constraints: Option<serde_json::Value>,
+}
+
+/// The successful result of `find_max_spending`, plus the base plan's
+/// assumptions.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MaxSpendingResult {
+    #[serde(flatten)]
+    pub search: MaxSpending,
     pub assumptions: Assumptions,
 }
 
@@ -295,6 +319,39 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         Ok(tool_result(self.run_sweep(args).await))
     }
 
+    /// Find the most a plan can spend each year while meeting optional
+    /// constraints: no unfunded years and a minimum balance
+    /// (`minBalanceCents`, default 0) in every year after the first
+    /// retirement through `throughYear` (default the final year). Searches by
+    /// running projections (at most 25) to within $100. Spending is
+    /// `annualWithdrawalCents`, or for itemized plans the sum of expenses, all
+    /// scaled together. Returns the amount, the summary at that amount, and
+    /// the projections used. `outcome` is `found`, `fails_at_zero` (no amount
+    /// works) or `no_upper_limit`.
+    #[tool(annotations(
+        title = "Find the maximum annual spending",
+        read_only_hint = true,
+        destructive_hint = false,
+        idempotent_hint = true,
+        open_world_hint = false
+    ))]
+    pub async fn find_max_spending(
+        &self,
+        Parameters(args): Parameters<FindMaxSpendingArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        Ok(tool_result(self.max_spending(args).await))
+    }
+
+    async fn max_spending(&self, args: FindMaxSpendingArgs) -> Result<MaxSpendingResult, Error> {
+        let plan = Plan::from_json(&args.plan.to_string())?;
+        let constraints = Constraints::from_value(args.constraints.unwrap_or_default())?;
+        let search = find_max_spending(&*self.projector, &plan, constraints).await?;
+        Ok(MaxSpendingResult {
+            search,
+            assumptions: Assumptions::from_plan(&plan, Vec::new()),
+        })
+    }
+
     async fn run_sweep(&self, args: SweepArgs) -> Result<SweepToolResult, Error> {
         let plan = Plan::from_json(&args.plan.to_string())?;
         // `json!` builds a JSON value with Rust expressions inside, so the
@@ -472,7 +529,15 @@ mod tests {
 
         let mut names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
         names.sort();
-        assert_eq!(names, ["compare_scenarios", "run_projection", "sweep"]);
+        assert_eq!(
+            names,
+            [
+                "compare_scenarios",
+                "find_max_spending",
+                "run_projection",
+                "sweep"
+            ]
+        );
         for tool in &tools {
             let annotations = tool.annotations.as_ref().expect("annotations");
             assert_eq!(annotations.read_only_hint, Some(true), "{}", tool.name);
@@ -797,6 +862,68 @@ mod tests {
         assert_eq!(
             text_of(&result),
             "sweep problem at `values[1]`: values must be in strictly ascending order"
+        );
+    }
+
+    #[tokio::test]
+    async fn find_max_spending_returns_the_amount_and_summary() {
+        // Every year funded while the withdrawal is at most $55,000.
+        let fake = FakeProjector::from_fn(|plan| {
+            let mut result = projection();
+            if plan.annual_withdrawal_cents <= 5_500_000 {
+                for year in &mut result.totals {
+                    year.unfunded_withdrawal_cents = 0;
+                }
+            }
+            Ok(result)
+        });
+        let client = connect(fake).await;
+        let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
+
+        let result = client
+            .call_tool(
+                CallToolRequestParams::new("find_max_spending").with_arguments(
+                    serde_json::json!({ "plan": plan, "constraints": {"throughYear": 40} })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+
+        assert_ne!(result.is_error, Some(true), "{}", text_of(&result));
+        let body: serde_json::Value = serde_json::from_str(text_of(&result)).unwrap();
+        assert_eq!(body["outcome"], "found");
+        let cents = body["annualSpendingCents"].as_i64().unwrap();
+        assert!((5_490_000..=5_500_000).contains(&cents), "{cents}");
+        assert_eq!(body["summary"]["lastsThroughFinalYear"], true);
+        assert_eq!(body["throughYear"], 40);
+        assert_eq!(body["assumptions"]["drawdownYears"], 30);
+        assert!(body["projectionsUsed"].as_u64().unwrap() <= 25);
+    }
+
+    #[tokio::test]
+    async fn find_max_spending_bad_constraints_are_tool_errors() {
+        let client = connect(FakeProjector::scripted(Vec::new())).await;
+        let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
+
+        let result = client
+            .call_tool(
+                CallToolRequestParams::new("find_max_spending").with_arguments(
+                    serde_json::json!({ "plan": plan, "constraints": {"throughYear": 99} })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.is_error, Some(true));
+        assert_eq!(
+            text_of(&result),
+            "constraint problem at `constraints.throughYear`: must be between 1 and the plan's final year (40)"
         );
     }
 }

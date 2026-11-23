@@ -22,6 +22,7 @@ pub mod cli;
 pub mod compare;
 pub mod config;
 pub mod error;
+pub mod max_spending;
 pub mod overrides;
 pub mod plan;
 pub mod projection;
