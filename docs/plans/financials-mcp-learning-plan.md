@@ -490,7 +490,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-18-learning-walkthrough-docs`
-- **Pull Request:** PR_LINK
+- **Pull Request:** [#20](https://github.com/zachfire9/financials-mcp/pull/20)
 - **Concept:** The repo should be both a working app and a learning artifact.
 - **Functionality:**
   - A walkthrough of the completed steps (`docs/walkthrough.md`), linked from a shorter README.

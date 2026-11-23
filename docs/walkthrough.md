@@ -271,7 +271,7 @@ To follow along, read each step's files in order. Explanations of Rust concepts 
 
 ### Step 18: Learning walkthrough
 
-PR #19 (this step)
+[PR #20](https://github.com/zachfire9/financials-mcp/pull/20)
 
 - **Built:** this walkthrough, the [architecture](architecture.md) overview with an example conversation, the [Rust concepts index](rust-concepts.md), the [tool reference](tools.md), a shorter README, and tests that keep the docs accurate.
 - **Look at:** [`docs/`](.), [`tests/docs.rs`](../tests/docs.rs).
