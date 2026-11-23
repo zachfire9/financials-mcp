@@ -143,10 +143,10 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 | `op` | Effect |
 |---|---|
-| `shift_retirement` | Moves retirement by ±N years (everyone, or one `personId`) |
+| `shift_retirement` | Moves retirement by ±N years (everyone, or one `personId`); the final year stays fixed, so drawdown absorbs the change |
 | `set_drawdown_years` | Sets `drawdownYears` |
 | `set_annual_withdrawal` | Sets `annualWithdrawalCents` (non-itemized plans) |
-| `scale_expenses` | Multiplies every itemized expense by a factor |
+| `scale_expenses` | Scales all drawdown spending to an integer `percent` (itemized expenses or the annual withdrawal, plus the gap withdrawal; not the mortgage) |
 | `add_expense` / `remove_expense` / `set_expense` | Itemized expense edits |
 | `adjust_returns` | Adds ±N basis points to every item's return (optionally drawdown only) |
 | `set_item` | Changes one item's contribution, return or withdrawal priority |
@@ -356,9 +356,9 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 10 — Override operations
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-10-override-operations`
-- **Pull Request:** TBD
+- **Pull Request:** PR_LINK
 - **Concept:** Scenarios are a small, explicit set of changes applied to a copy of the plan (see [Override operations](#override-operations)), so every change is easy to check and to describe.
 - **Rust introduced:** enums with data (`enum Override { ShiftRetirement { years: i32, person_id: Option<String> }, ... }`), `match`, `#[serde(tag = "op")]`, `Clone` versus borrowing, mutable references.
 - **Functionality:**

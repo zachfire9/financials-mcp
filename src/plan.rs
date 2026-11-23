@@ -300,7 +300,7 @@ impl Plan {
 
     /// Whether this plan uses saving/drawdown phases rather than simple
     /// `years`. Mirrors the API's `usesPhaseProjection`: any phase field set.
-    fn uses_phase_projection(&self) -> bool {
+    pub(crate) fn uses_phase_projection(&self) -> bool {
         self.saving_years != 0
             || self.drawdown_years != 0
             || self.annual_withdrawal_cents != 0
@@ -316,7 +316,7 @@ impl Plan {
     /// An iterator chain: `.map` turns each person into their saving years,
     /// `.max()` picks the largest and returns an `Option` (there may be no
     /// people), and `.unwrap_or` supplies the value to use when it's `None`.
-    fn last_retirement_year(&self) -> i32 {
+    pub(crate) fn last_retirement_year(&self) -> i32 {
         self.people
             .iter()
             .map(|person| person.saving_years)
