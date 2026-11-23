@@ -378,7 +378,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-11-compare-scenarios`
-- **Pull Request:** PR_LINK
+- **Pull Request:** [#11](https://github.com/zachfire9/financials-mcp/pull/11)
 - **Concept:** Batch work on the server: one tool call runs a baseline and several scenarios, in parallel but politely.
 - **Rust introduced:** `tokio::task::JoinSet`, `Semaphore` for a concurrency limit (4), `Arc` sharing, collecting results in order.
 - **Functionality:**
