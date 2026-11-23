@@ -16,6 +16,7 @@ This is a learning project, built one reviewable step at a time. Each step teach
 - **Step 10 (overrides):** `run_projection` takes optional `overrides` (retire earlier, spend less, lower returns, add an expense, and more) applied to a copy of the plan. See [Overrides](#overrides).
 - **Step 11 (compare scenarios):** a `compare_scenarios` tool runs a baseline plus up to 12 named scenarios concurrently (at most 4 projections at once) and reports each one's change from the baseline. See [Comparing scenarios](#comparing-scenarios).
 - **Step 12 (sweep):** a `sweep` tool varies one input across up to 25 values and reports the **breakpoints** where the plan stops (or starts) lasting. See [Sweeps](#sweeps).
+- **Step 13 (max spending):** a `find_max_spending` tool searches for the most a plan can spend each year while keeping an optional minimum balance. See [Maximum spending](#maximum-spending).
 
 ## Requirements
 
@@ -82,7 +83,7 @@ cargo build --release      # -> target\release\financials-mcp.exe
 claude mcp add --transport stdio --env FINANCIALS_API_URL=http://localhost:8080 financials -- C:\path\to\financials-mcp\target\release\financials-mcp.exe serve
 ```
 
-Add `--scope user` to make it available in every project (the default scope is the current project only). Then ask something like *"Run a projection for this plan and tell me whether the money lasts"* and attach or paste a plan JSON. Then follow up with *"What if I retired 2 years earlier?"* or *"Compare retiring 2 years earlier against returns 1% lower,"* or *"How much later would we need to retire for the money to last?"*
+Add `--scope user` to make it available in every project (the default scope is the current project only). Then ask something like *"Run a projection for this plan and tell me whether the money lasts"* and attach or paste a plan JSON. Then follow up with *"What if I retired 2 years earlier?"* or *"Compare retiring 2 years earlier against returns 1% lower,"* or *"How much later would we need to retire for the money to last?"* or *"What's the most we can spend and still have $200k left?"*
 
 ## Overrides
 
@@ -147,6 +148,19 @@ Scenario names must be unique and at most 80 characters. Projections run at most
 ```
 
 It returns one compact point per value (`lastsThroughFinalYear`, `depletionYear`, `yearsShort`, `endingBalance`, `lowestBalance`, `totalUnfunded`) and the `breakpoints`: each neighboring pair of values where the outcome changes, as `{ "lastsAt": 1, "shortAt": 0 }`. The real threshold lies between the two values, and a finer sweep narrows it down. Every value must be valid and every projection must succeed, since a series with gaps could hide a breakpoint.
+
+## Maximum spending
+
+`find_max_spending` answers "what's the most we can spend each year?" by searching rather than guessing. financials-api always gives the same projection for the same plan, so the server can run projections until it finds the answer:
+
+```json
+{ "plan": { "...": "..." }, "constraints": { "minBalanceCents": 20000000, "throughYear": 40 } }
+```
+
+- **Spending** is `annualWithdrawalCents`, or for itemized plans the sum of the expenses, all scaled by the same factor. The gap-year withdrawal and the mortgage stay as they are.
+- **Constraints** (both optional): no unfunded years, and a balance of at least `minBalanceCents` (default 0) in every year from the first retirement through `throughYear` (default the final year). Saving years don't count, since a plan can start below the buffer and grow past it. Years after `throughYear` aren't checked, so the money may still run out later.
+- **Search:** check the least spending allowed (the API requires at least 1 cent of withdrawal), then double from the current spending until a projection fails, then binary search to within $100. At most 25 projections.
+- **Result:** `outcome` (`found`, `fails_at_zero` or `no_upper_limit`), `annualSpendingCents` (ready for a plan or the `set_annual_withdrawal` override) and `annualSpending` in dollars, `precision`, `projectionsUsed`, the summary at that amount and, for itemized plans, `scaleBasisPoints` and each scaled expense.
 
 ## Commands
 

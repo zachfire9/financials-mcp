@@ -52,6 +52,11 @@ pub enum Error {
     #[error("sweep problem at `{location}`: {problem}")]
     SweepShape { location: String, problem: String },
 
+    /// `find_max_spending` constraints that aren't the right shape or don't
+    /// fit the plan.
+    #[error("constraint problem at `{location}`: {problem}")]
+    ConstraintShape { location: String, problem: String },
+
     /// An override that can't be applied to this plan, or whose result breaks
     /// a plan rule. Names the override by position and `op`. `&'static str`
     /// is a string literal compiled into the program, so no allocation.
@@ -170,7 +175,8 @@ fn friendly_type(expected: &str) -> &str {
         | "struct MortgageInput"
         | "internally tagged enum Override"
         | "struct Scenario"
-        | "struct Sweep" => "an object",
+        | "struct Sweep"
+        | "struct Constraints" => "an object",
         _ => expected,
     }
 }
