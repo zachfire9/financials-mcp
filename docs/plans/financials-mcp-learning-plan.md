@@ -485,9 +485,9 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 17 — Dependency and supply-chain checks
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-17-dependency-checks`
-- **Pull Request:** TBD
+- **Pull Request:** PR_LINK
 - **Concept:** A Rust project inherits the security of its dependencies. Check them continuously.
 - **Rust introduced:** `Cargo.lock`, `cargo deny` (advisories, licenses, sources), Dependabot for Cargo and GitHub Actions.
 - **Functionality:**

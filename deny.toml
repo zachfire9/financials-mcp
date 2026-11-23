@@ -1,0 +1,67 @@
+# cargo-deny policy: what this project accepts from its dependencies.
+#
+# Run locally with `cargo deny check` (install: `cargo install cargo-deny
+# --locked`). CI runs the same command on every push and pull request.
+#
+# Four checks:
+# - advisories: known vulnerabilities, unmaintained or yanked crates
+#   (from the RustSec advisory database);
+# - licenses:   every dependency's license is on the allow list;
+# - bans:       crates we don't want, and duplicate versions;
+# - sources:    crates come only from crates.io.
+
+[graph]
+# Check the dependencies of every platform, not just the one running the
+# check: CI on Linux must also catch a problem in a Windows-only crate.
+all-features = false
+
+[advisories]
+# Vulnerabilities always fail. Yanked versions (withdrawn by their authors)
+# fail too. Unmaintained crates fail when this project depends on them
+# directly; for transitive ones, the crate that pulls them in has to move.
+yanked = "deny"
+unmaintained = "workspace"
+# Every ignored advisory needs an id, a reason and a date to revisit.
+ignore = []
+
+[licenses]
+# Permissive licenses only. A crate with a choice (`MIT OR Apache-2.0`)
+# passes if any option is allowed, so copyleft alternatives offered next to
+# MIT or Apache don't block anything.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "CDLA-Permissive-2.0", # webpki-root-certs: Mozilla's root certificate data
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "Unicode-3.0",
+    "Zlib",
+]
+# Fail if a license on the list is no longer used, so the list stays honest.
+unused-allowed-license = "deny"
+confidence-threshold = 0.9
+
+[licenses.private]
+# This crate itself has no license (`publish = false`): skip it.
+ignore = true
+
+[bans]
+# Two versions of one crate is common in Rust (a dependency lags behind) and
+# only costs build time, so it's a warning. `*` versions are never allowed.
+multiple-versions = "warn"
+wildcards = "deny"
+deny = [
+    # TLS is rustls (pure Rust). Native OpenSSL would mean a C library, system
+    # dependencies and a second TLS stack; fail if anything pulls it in.
+    { crate = "openssl-sys", reason = "TLS is rustls; no native OpenSSL" },
+    { crate = "native-tls", reason = "TLS is rustls; no native TLS" },
+]
+
+[sources]
+# Only crates.io: no other registries and no git dependencies, so every
+# crate has a published, immutable version that `Cargo.lock` can pin.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -4,6 +4,10 @@ on:
   push:
     branches: ['**']
   pull_request:
+  # Weekly, so a newly published advisory for a dependency fails CI even when
+  # nothing in the repo changed.
+  schedule:
+    - cron: '23 14 * * 1'
 
 permissions:
   contents: read
@@ -30,3 +34,29 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
+
+  # Dependency policy (deny.toml): advisories, licenses, banned crates and
+  # sources. Linux only: the check covers every platform's dependencies.
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # A pinned release binary, checked against a checksum written here (not
+      # downloaded next to it), rather than a third-party action or a
+      # two-minute `cargo install`. Dependabot can't update this: change
+      # VERSION and SHA256 together, from the release's .sha256 file.
+      - name: Install cargo-deny
+        env:
+          VERSION: '0.22.0'
+          SHA256: '98c56e6a408bfa5c3c60744b6015aaa6aa08f743fdeb88386d06fca035bb1786'
+        run: |
+          name="cargo-deny-${VERSION}-x86_64-unknown-linux-musl"
+          curl --proto '=https' --tlsv1.2 -sSfL -o cargo-deny.tar.gz \
+            "https://github.com/EmbarkStudios/cargo-deny/releases/download/${VERSION}/${name}.tar.gz"
+          echo "${SHA256}  cargo-deny.tar.gz" | sha256sum --check --strict
+          tar -xzf cargo-deny.tar.gz
+          install -m 0755 "${name}/cargo-deny" "${HOME}/.cargo/bin/cargo-deny"
+          cargo deny --version
+      - run: cargo deny --locked check
