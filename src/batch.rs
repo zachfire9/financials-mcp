@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
+use tracing::Instrument;
 
 use crate::error::Error;
 use crate::plan::Plan;
@@ -65,16 +66,22 @@ pub async fn project_all<P: Projector + 'static>(
                 // (`projector`, `permits`, `plan`, `index`). `spawn` requires
                 // that (`'static`): the task may run after this loop
                 // iteration, or even this function, has moved on.
-                tasks.spawn(async move {
-                    // Held until the end of the block, then dropped, which
-                    // returns the permit. (`let _ = ...` would drop it at once
-                    // and the limit would do nothing.)
-                    let _permit = permits
-                        .acquire_owned()
-                        .await
-                        .expect("the semaphore is never closed");
-                    (index, project_and_summarize(&*projector, &plan).await)
-                });
+                // A spawned task starts outside any span, so the caller's
+                // span (a tool call's `tool=...`) is attached explicitly;
+                // `Span::current()` is whichever span is active right here.
+                tasks.spawn(
+                    async move {
+                        // Held until the end of the block, then dropped, which
+                        // returns the permit. (`let _ = ...` would drop it at once
+                        // and the limit would do nothing.)
+                        let _permit = permits
+                            .acquire_owned()
+                            .await
+                            .expect("the semaphore is never closed");
+                        (index, project_and_summarize(&*projector, &plan).await)
+                    }
+                    .instrument(tracing::Span::current()),
+                );
             }
         }
     }
