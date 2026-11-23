@@ -414,7 +414,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-13-find-max-spending`
-- **Pull Request:** PR_LINK
+- **Pull Request:** [#13](https://github.com/zachfire9/financials-mcp/pull/13)
 - **Concept:** Because the engine is deterministic, the server can search for an answer instead of the model guessing.
 - **Rust introduced:** loops with invariants, writing a pure search function that's generic over the `Projector` trait, careful integer arithmetic.
 - **Functionality:**
