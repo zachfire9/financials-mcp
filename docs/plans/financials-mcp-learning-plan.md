@@ -358,7 +358,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-10-override-operations`
-- **Pull Request:** PR_LINK
+- **Pull Request:** [#10](https://github.com/zachfire9/financials-mcp/pull/10)
 - **Concept:** Scenarios are a small, explicit set of changes applied to a copy of the plan (see [Override operations](#override-operations)), so every change is easy to check and to describe.
 - **Rust introduced:** enums with data (`enum Override { ShiftRetirement { years: i32, person_id: Option<String> }, ... }`), `match`, `#[serde(tag = "op")]`, `Clone` versus borrowing, mutable references.
 - **Functionality:**
