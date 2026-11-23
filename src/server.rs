@@ -25,6 +25,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
+use crate::overrides::{Override, apply_overrides};
 use crate::plan::Plan;
 use crate::projector::{Projector, project_and_summarize};
 use crate::summary::Summary;
@@ -50,6 +51,13 @@ pub struct RunProjectionArgs {
     /// The plan to project.
     #[schemars(with = "Plan")]
     pub plan: serde_json::Value,
+    /// Optional changes applied in order to a copy of the plan before
+    /// projecting, such as `{"op": "shift_retirement", "years": -2}`.
+    // Raw JSON for the same reason as `plan`. `Option` plus `default` makes
+    // the field optional: leaving it out gives `None`.
+    #[serde(default)]
+    #[schemars(with = "Option<Vec<Override>>")]
+    pub overrides: Option<serde_json::Value>,
 }
 
 /// The successful result of `run_projection`.
@@ -64,6 +72,9 @@ pub struct ProjectionResult {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Assumptions {
+    /// The overrides applied, echoed back so the scenario can be described.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub overrides: Vec<Override>,
     /// Years of saving (the plan-wide value; see `people` for per-person).
     pub saving_years: i32,
     pub drawdown_years: i32,
@@ -91,9 +102,11 @@ pub struct ItemReturn {
 }
 
 impl Assumptions {
-    /// Collects the assumptions from a plan.
-    fn from_plan(plan: &Plan) -> Assumptions {
+    /// Collects the assumptions from a plan (after any overrides) and the
+    /// overrides that produced it.
+    fn from_plan(plan: &Plan, overrides: Vec<Override>) -> Assumptions {
         Assumptions {
+            overrides,
             saving_years: plan.saving_years,
             drawdown_years: plan.drawdown_years,
             people: plan
@@ -158,7 +171,9 @@ impl<P: Projector + 'static> FinancialsServer<P> {
 
     /// Run one retirement projection for a plan and return a compact summary
     /// (does the money last, when does it run short, lowest balance, totals)
-    /// plus the assumptions it used. Amounts are whole dollars.
+    /// plus the assumptions it used. Amounts are whole dollars. Pass
+    /// `overrides` to project a "what if" (retire earlier, spend less, lower
+    /// returns) without rewriting the plan.
     ///
     /// A `#[tool]` method's doc comment becomes the tool's description; its
     /// `Parameters<T>` argument becomes the input schema (from `T`'s
@@ -182,7 +197,7 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         // Problems with the plan or the API are not protocol failures: they're
         // returned as a normal result marked `isError`, so the model reads the
         // message and can fix the plan or explain the problem.
-        Ok(match self.project(args.plan).await {
+        Ok(match self.project(args).await {
             Ok(result) => CallToolResult::success(vec![ContentBlock::text(
                 serde_json::to_string_pretty(&result).expect("a result always serializes"),
             )]),
@@ -190,15 +205,26 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         })
     }
 
-    /// Parses, checks, projects and summarizes, using the crate's own errors.
-    async fn project(&self, plan: serde_json::Value) -> Result<ProjectionResult, Error> {
-        let plan = Plan::from_json(&plan.to_string())?;
+    /// Parses, applies overrides, projects and summarizes, using the crate's
+    /// own errors.
+    async fn project(&self, args: RunProjectionArgs) -> Result<ProjectionResult, Error> {
+        let plan = Plan::from_json(&args.plan.to_string())?;
+        // `Option::map` parses the overrides only if they were sent;
+        // `transpose` flips `Option<Result<..>>` into `Result<Option<..>>`
+        // so `?` can return the error; `unwrap_or_default` gives an empty
+        // list for `None`.
+        let overrides = args
+            .overrides
+            .map(Override::list_from_value)
+            .transpose()?
+            .unwrap_or_default();
+        let plan = apply_overrides(&plan, &overrides)?;
         // `&*self.projector` turns `&Arc<P>` into `&P`: `*` reaches through
         // the `Arc` to the projector, `&` borrows it.
         let summary = project_and_summarize(&*self.projector, &plan).await?;
         Ok(ProjectionResult {
             summary,
-            assumptions: Assumptions::from_plan(&plan),
+            assumptions: Assumptions::from_plan(&plan, overrides),
         })
     }
 }
@@ -260,7 +286,14 @@ mod tests {
     /// Calls `run_projection` with the given plan JSON text.
     async fn call(client: &RunningService<RoleClient, ()>, plan: &str) -> CallToolResult {
         let plan: serde_json::Value = serde_json::from_str(plan).unwrap();
-        let arguments = serde_json::json!({ "plan": plan });
+        call_with(client, serde_json::json!({ "plan": plan })).await
+    }
+
+    /// Calls `run_projection` with the given arguments object.
+    async fn call_with(
+        client: &RunningService<RoleClient, ()>,
+        arguments: serde_json::Value,
+    ) -> CallToolResult {
         client
             .call_tool(
                 CallToolRequestParams::new("run_projection")
@@ -325,9 +358,14 @@ mod tests {
             "amountCents",
             "annualReturnRateBasisPoints",
             "drawdownYears",
+            "overrides",
+            "shift_retirement",
+            "basisPoints",
         ] {
             assert!(schema.contains(expected), "schema is missing {expected}");
         }
+        // Only the plan is required; overrides are optional.
+        assert_eq!(tool.input_schema["required"], serde_json::json!(["plan"]));
         assert!(
             !schema.contains("Rust"),
             "Rust notes leaked into the schema"
@@ -394,6 +432,93 @@ mod tests {
         assert_eq!(result.is_error, Some(true));
         assert!(
             text_of(&result).contains("FINANCIALS_ACCESS_TOKEN"),
+            "{}",
+            text_of(&result)
+        );
+    }
+
+    #[tokio::test]
+    async fn overrides_change_the_plan_that_is_projected() {
+        // The server takes ownership of the fake, so the test keeps its own
+        // handle to a shared list: `Arc` (shared ownership) around a `Mutex`
+        // (one writer at a time). The `move` closure owns one clone of the
+        // `Arc`; the test keeps the other.
+        let received: Arc<std::sync::Mutex<Vec<Plan>>> = Arc::default();
+        let recorder = Arc::clone(&received);
+        let fake = FakeProjector::from_fn(move |plan| {
+            recorder.lock().unwrap().push(plan.clone());
+            Ok(projection())
+        });
+        let client = connect(fake).await;
+        let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
+
+        let result = call_with(
+            &client,
+            serde_json::json!({
+                "plan": plan,
+                "overrides": [
+                    {"op": "shift_retirement", "years": -2},
+                    {"op": "adjust_returns", "basisPoints": -100}
+                ]
+            }),
+        )
+        .await;
+
+        assert_ne!(result.is_error, Some(true), "{}", text_of(&result));
+        let sent = received.lock().unwrap();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].saving_years, 8);
+        assert_eq!(sent[0].drawdown_years, 32);
+        assert_eq!(sent[0].items[0].annual_return_rate_basis_points, 600);
+
+        // The assumptions describe the changed plan and echo the overrides.
+        let body: serde_json::Value = serde_json::from_str(text_of(&result)).unwrap();
+        let assumptions = &body["assumptions"];
+        assert_eq!(assumptions["savingYears"], 8);
+        assert_eq!(assumptions["drawdownYears"], 32);
+        assert_eq!(
+            assumptions["returns"][0]["annualReturnRateBasisPoints"],
+            600
+        );
+        assert_eq!(assumptions["overrides"][0]["op"], "shift_retirement");
+        assert_eq!(assumptions["overrides"][1]["basisPoints"], -100);
+    }
+
+    #[tokio::test]
+    async fn without_overrides_none_are_echoed() {
+        let client = connect(FakeProjector::scripted(vec![Ok(projection())])).await;
+        let result = call(&client, PLAN).await;
+        let body: serde_json::Value = serde_json::from_str(text_of(&result)).unwrap();
+        assert!(body["assumptions"].get("overrides").is_none());
+    }
+
+    #[tokio::test]
+    async fn a_bad_override_is_a_tool_error_naming_it() {
+        let client = connect(FakeProjector::scripted(Vec::new())).await;
+        let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
+
+        let result = call_with(
+            &client,
+            serde_json::json!({
+                "plan": plan,
+                "overrides": [{"op": "set_item", "itemId": "item-boat", "annualContributionCents": 1}]
+            }),
+        )
+        .await;
+        assert_eq!(result.is_error, Some(true));
+        assert_eq!(
+            text_of(&result),
+            "overrides[0] (set_item): no item with id `item-boat` (items without an id can't be changed)"
+        );
+
+        let result = call_with(
+            &client,
+            serde_json::json!({ "plan": plan, "overrides": [{"op": "retire_now"}] }),
+        )
+        .await;
+        assert_eq!(result.is_error, Some(true));
+        assert!(
+            text_of(&result).starts_with("override problem at `overrides[0].op`"),
             "{}",
             text_of(&result)
         );

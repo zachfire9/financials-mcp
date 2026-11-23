@@ -13,6 +13,7 @@ This is a learning project, built one reviewable step at a time. Each step teach
 - **Steps 05–07:** projection summaries, the `Projector` trait with a fake for tests, and the real financials-api client.
 - **Step 08 (debug command):** `financials-mcp project <plan.json>` runs a plan through financials-api and prints the summary.
 - **Step 09 (MCP server):** `financials-mcp serve` speaks MCP over stdio with one tool, `run_projection`.
+- **Step 10 (overrides):** `run_projection` takes optional `overrides` (retire earlier, spend less, lower returns, add an expense, and more) applied to a copy of the plan. See [Overrides](#overrides).
 
 ## Requirements
 
@@ -79,7 +80,36 @@ cargo build --release      # -> target\release\financials-mcp.exe
 claude mcp add --transport stdio --env FINANCIALS_API_URL=http://localhost:8080 financials -- C:\path\to\financials-mcp\target\release\financials-mcp.exe serve
 ```
 
-Add `--scope user` to make it available in every project (the default scope is the current project only). Then ask something like *"Run a projection for this plan and tell me whether the money lasts"* and attach or paste a plan JSON.
+Add `--scope user` to make it available in every project (the default scope is the current project only). Then ask something like *"Run a projection for this plan and tell me whether the money lasts"* and attach or paste a plan JSON. Then follow up with *"What if I retired 2 years earlier?"*
+
+## Overrides
+
+`run_projection` accepts an optional `overrides` list: small, named changes applied in order to a copy of the plan, so a "what if" never needs a rewritten plan.
+
+```json
+{
+  "plan": { "...": "..." },
+  "overrides": [
+    { "op": "shift_retirement", "years": -2 },
+    { "op": "adjust_returns", "basisPoints": -100 }
+  ]
+}
+```
+
+| `op` | Fields | Effect |
+|---|---|---|
+| `shift_retirement` | `years`, optional `personId` | Retire later (+) or earlier (−), everyone or one person. The plan's final year stays fixed, so drawdown absorbs the change. |
+| `set_drawdown_years` | `years` | Sets the drawdown length (moves the final year). |
+| `set_annual_withdrawal` | `annualWithdrawalCents` | Plans without itemized expenses only. |
+| `scale_expenses` | `percent` | Scales all drawdown spending (itemized expenses or the annual withdrawal, plus the gap withdrawal) to `percent`; 90 = 10% less. Not the mortgage. |
+| `add_expense` | `expense` | Adds an itemized expense (same shape as the plan's). |
+| `remove_expense` | `expenseId` | Removes an itemized expense. |
+| `set_expense` | `expenseId` plus any of `annualAmountCents`, `inflationRateBasisPoints`, `fromYear`, `toYear` | Changes one expense. |
+| `adjust_returns` | `basisPoints`, optional `drawdownOnly` | Adds to every account's return (−100 = one point lower). |
+| `set_item` | `itemId` plus any of `annualContributionCents`, `annualReturnRateBasisPoints`, `drawdownAnnualReturnRateBasisPoints`, `withdrawalPriority` | Changes one account. |
+| `set_inflation` | `basisPoints` | Sets the withdrawal inflation rate. |
+
+The result's `assumptions` describe the changed plan and echo the overrides. Errors name the override at fault, such as `overrides[1] (shift_retirement): no person with id ...`, and never quote amounts. At most 20 overrides per call.
 
 ## Commands
 

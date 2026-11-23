@@ -37,6 +37,21 @@ pub enum Error {
     #[error("invalid plan: {}", .problems.join("; "))]
     InvalidPlan { problems: Vec<String> },
 
+    /// A list of overrides that isn't the right shape: an unknown `op`, a
+    /// missing or misspelled field, or a value of the wrong type.
+    #[error("override problem at `{location}`: {problem}")]
+    OverrideShape { location: String, problem: String },
+
+    /// An override that can't be applied to this plan, or whose result breaks
+    /// a plan rule. Names the override by position and `op`. `&'static str`
+    /// is a string literal compiled into the program, so no allocation.
+    #[error("overrides[{index}] ({op}): {problem}")]
+    InvalidOverride {
+        index: usize,
+        op: &'static str,
+        problem: String,
+    },
+
     /// financials-api refused the access token (`401`). The token itself is
     /// never part of the message.
     #[error(
@@ -142,7 +157,8 @@ fn friendly_type(expected: &str) -> &str {
         | "struct ItemInput"
         | "struct PersonInput"
         | "struct ExpenseInput"
-        | "struct MortgageInput" => "an object",
+        | "struct MortgageInput"
+        | "internally tagged enum Override" => "an object",
         _ => expected,
     }
 }
