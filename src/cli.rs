@@ -17,19 +17,21 @@ use crate::error::Error;
 use crate::plan::Plan;
 use crate::projector::{Projector, project_and_summarize};
 
+// `///` doc comments on clap types become the `--help` text, so they're
+// written for the person running the program. Rust notes go in `//` comments
+// like this one (a test checks `--help` for leaks).
+
 /// Retirement projection tools for AI agents, backed by financials-api.
-///
-/// `///` doc comments on clap types become the `--help` text.
 #[derive(Debug, Parser)]
 #[command(name = "financials-mcp", version)]
 pub struct Cli {
-    /// `Option` because running with no subcommand is allowed (it prints the
-    /// banner).
+    // `Option` because running with no subcommand is allowed (it prints the
+    // banner).
     #[command(subcommand)]
     pub command: Option<Command>,
 }
 
-/// One variant per subcommand. Each variant's fields are its arguments.
+// One variant per subcommand. Each variant's fields are its arguments.
 #[derive(Debug, Subcommand, PartialEq)]
 pub enum Command {
     /// Run a plan through financials-api and print its summary as JSON.
@@ -43,7 +45,8 @@ pub enum Command {
     /// Start the MCP server on stdin/stdout, for an MCP client to launch.
     ///
     /// Reads FINANCIALS_API_URL and FINANCIALS_ACCESS_TOKEN from the
-    /// environment or a local .env file.
+    /// environment or a local .env file. Logs go to stderr; set
+    /// FINANCIALS_MCP_LOG to error, warn, info (default), debug, trace or off.
     Serve,
 }
 

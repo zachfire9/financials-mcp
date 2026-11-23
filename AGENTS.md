@@ -32,6 +32,7 @@ cargo run
 - **financials-api is the source of truth for the math.** Never reimplement the projection engine here.
 - **Tests:** unit tests sit next to the code in `#[cfg(test)] mod tests`; integration tests live in `tests/`. Tests never call the real financials-api or an LLM: use a fake projector or a mock HTTP server. New behavior needs a test; bug fixes need a test that fails without the fix.
 - **Formatting and lints:** `cargo fmt`; `cargo clippy` with warnings as errors. Line endings are LF (`.gitattributes`).
+- **Docs:** `docs/` holds the walkthrough, architecture, Rust concepts index and tool reference. `tests/docs.rs` fails if a link or anchor breaks, or if a new tool, subcommand, setting or source file isn't documented, so update the docs in the same PR. `///` comments become tool descriptions, schemas and `--help` text: write them for users, and put Rust notes in `//` comments.
 - **Commit messages** use conventional prefixes: `feat:`, `fix:`, `chore:`, `docs:`, `test:`.
 
 ## Security and privacy
