@@ -487,7 +487,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-17-dependency-checks`
-- **Pull Request:** PR_LINK
+- **Pull Request:** [#17](https://github.com/zachfire9/financials-mcp/pull/17)
 - **Concept:** A Rust project inherits the security of its dependencies. Check them continuously.
 - **Rust introduced:** `Cargo.lock`, `cargo deny` (advisories, licenses, sources), Dependabot for Cargo and GitHub Actions.
 - **Functionality:**
