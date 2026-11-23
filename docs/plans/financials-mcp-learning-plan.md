@@ -2,7 +2,7 @@
 
 > **Purpose:** Build a small Rust MCP server one reviewable step at a time. It lets an AI agent run many retirement projections through the financials-api engine and explain the trade-offs. Each step should teach one Rust or MCP concept, include deterministic tests, and land through its own pull request after this initial plan commit.
 
-The model chooses which scenarios to try and explains the results; **the financials-api engine does all the math**. This is also a first Rust codebase, so early steps are deliberately small, and each step names the Rust concepts it introduces.
+The model chooses which scenarios to try and explains the results; **the financials-api engine does all the math**. Steps 1–18 build the server and run it locally over stdio; Steps 19–22 host it on AWS Lambda over HTTP so Claude can use it from any device. This is also a first Rust codebase, so early steps are deliberately small, and each step names the Rust concepts it introduces.
 
 ## Working agreement
 
@@ -88,6 +88,12 @@ You ──► Claude / agent-harness ──MCP──► financials-mcp (Rust) �
            explains results)             batches and searches, summarizes)    calculator, stores nothing)
 ```
 
+Hosted (Steps 19–22), the same server runs on Lambda behind an HTTP API:
+
+```text
+Claude (any device) ──HTTPS + bearer token──► API Gateway ──► Lambda: financials-mcp ──HTTPS──► financials-api
+```
+
 Example questions it should eventually handle:
 
 - "Can we retire 2 years earlier? What would we have to give up?"
@@ -166,6 +172,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 - **stdout is reserved for the MCP protocol** in stdio mode, so logs go to stderr.
 - The financials-api access token is never printed, logged or returned to clients.
 - The plan is visible to the model provider, as when pasting it into a chat; tool outputs stay compact.
+- **Hosted mode (Steps 19–22):** every HTTP request needs the bearer token, the `Host` header must be on an allow list, and request size and time are capped. Plans pass through Lambda in memory only, CloudWatch logs follow the same no-contents rule, and secrets are `NoEcho` deploy parameters, never in git. Claude's custom connectors call the server from Anthropic's cloud, not from your device.
 
 ## Step checklist
 
@@ -516,6 +523,94 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 - **Verification:**
   - README is accurate and current.
 
+### Step 19 — Streamable HTTP transport, locally
+
+- **Status:** Not started
+- **Branch:** `step-19-streamable-http`
+- **Pull Request:** TBD
+- **Concept:** The same server over a second transport. MCP over HTTP lets clients that can't start a local process (Claude on the web and on a phone) reach the tools. Stateless mode suits Lambda, where any request may land on a fresh instance.
+- **Rust introduced:** Cargo features (an `http` feature, on by default, and `#[cfg(feature = "http")]`), `tower::Service` (the request-to-response abstraction that rmcp, axum and Lambda share), axum routing, graceful shutdown with `tokio::signal`, and the multi-threaded runtime.
+- **Functionality:**
+  - `financials-mcp serve --http [--listen 127.0.0.1:8787]` serves the same five tools at `/mcp` with rmcp's Streamable HTTP server transport (`transport-streamable-http-server`), in stateless mode (`legacy_session_mode: false`, JSON responses).
+  - Listens on loopback by default. rmcp's `Host` header check (protection against DNS rebinding) stays on, allowing loopback only for now; Step 20 makes the list configurable.
+  - The same logging rules as stdio: one line per tool call, to stderr, with no plan contents.
+  - Ctrl+C stops the server cleanly after in-flight requests finish.
+- **Tests:**
+  - The tool tests run over both transports through one shared helper: in-process stdio, and a local HTTP server on a random port, both with a fake projector.
+  - Stateless: independent requests from separate clients work without a session id.
+  - A request with a `Host` header that isn't allowed is rejected.
+  - The crate still builds and passes tests without the `http` feature (`cargo test --no-default-features` in CI).
+- **Verification:**
+  - `cargo test`
+  - Manual: `claude mcp add --transport http financials-http http://127.0.0.1:8787/mcp`, then run a comparison.
+
+### Step 20 — Bearer-token auth and request limits
+
+- **Status:** Not started
+- **Branch:** `step-20-http-auth-and-limits`
+- **Pull Request:** TBD
+- **Concept:** A URL anyone can reach needs a lock. Before the server leaves your machine, every HTTP request must carry a long secret, and size and time limits cap what any one request can cost.
+- **Rust introduced:** tower middleware (layers that wrap a service), constant-time comparison (`subtle::ConstantTimeEq`) and why `==` on secrets leaks timing, reusing Step 04's redacted secret newtype, `tokio::time::timeout`, and paused time in tests (`tokio::time::pause`).
+- **Functionality:**
+  - `serve --http` requires `MCP_BEARER_TOKEN` (at least 32 characters) and refuses to start without it. Every request must send `Authorization: Bearer <token>`, compared in constant time. Failures return `401` with `WWW-Authenticate: Bearer` and no other detail.
+  - `MCP_ALLOWED_HOSTS` lists the hostnames accepted in the `Host` header (default: loopback only).
+  - A request body limit of 1 MiB (plans are a few KB), and a 25-second time limit per tool call, returned as a tool error (API Gateway's limit is 30 seconds).
+  - Rejected requests log `auth_failed` (or the limit hit) with no token or header contents.
+- **Tests:**
+  - Missing, malformed, wrong and wrong-length tokens get `401`; the right token works.
+  - Startup fails with a missing or short token.
+  - An oversized body gets `413` before reaching any tool.
+  - A slow fake projector hits the time limit (with paused time) and returns a tool error.
+  - Captured logs contain neither the token nor the `Authorization` header.
+- **Verification:**
+  - `cargo test`
+  - Manual: `curl` without a token gets `401`; with it, `tools/list` returns five tools.
+
+### Step 21 — Lambda packaging with cargo-lambda
+
+- **Status:** Not started
+- **Branch:** `step-21-lambda-packaging`
+- **Pull Request:** TBD
+- **Concept:** Lambda runs a function per request, with no long-lived server process. The tower service from Steps 19–20 plugs into Lambda through an adapter, so the tools, auth and limits are identical to local HTTP.
+- **Rust introduced:** `lambda_http` (API Gateway events as ordinary `http` requests), work done once per cold start versus per request, a second binary (`src/bin/lambda.rs`) behind a `lambda` feature, cross-compiling to `aarch64` with `cargo-lambda`, and release-profile settings (`lto`, `strip`) for size and cold-start time.
+- **Functionality:**
+  - A `lambda` binary that loads configuration from the environment (`FINANCIALS_API_URL`, `FINANCIALS_ACCESS_TOKEN`, `MCP_BEARER_TOKEN`, `MCP_ALLOWED_HOSTS`, `FINANCIALS_MCP_LOG`), builds the server once per cold start, and serves each invocation through the Step 20 service stack.
+  - Logs go to CloudWatch under the same rules as Step 16.
+  - `cargo lambda build --release --arm64 --bin lambda` produces the `bootstrap` executable for `provided.al2023`.
+  - CI builds the Lambda artifact so packaging breakage is caught early, and `cargo deny` covers the new crates.
+- **Tests:**
+  - Handler tests with synthetic API Gateway HTTP API (v2) events: `initialize` and `tools/call` succeed with the right token; no token gets `401`; an oversized body is rejected.
+  - The shared tool tests pass through the Lambda adapter too.
+- **Verification:**
+  - `cargo test`
+  - Manual: `cargo lambda watch`, then call it locally with `curl`; note the artifact size in the PR.
+
+### Step 22 — Deploy with SAM and GitHub OIDC, then connect Claude
+
+- **Status:** Not started
+- **Branch:** `step-22-deploy-and-connect`
+- **Pull Request:** TBD
+- **Concept:** Infrastructure as code, mirroring financials-api. A SAM template describes the function and its API, a GitHub Actions workflow deploys it with short-lived OIDC credentials (no stored AWS keys), and Claude connects to the resulting URL.
+- **Rust introduced:** little new Rust; how a release build gets from `cargo lambda build` into a SAM deployment in CI.
+- **Functionality:**
+  - `template.yaml`:
+    - an arm64 `provided.al2023` function (128–256 MB, 29-second timeout)
+    - an HTTP API with throttling, as in financials-api
+    - optional reserved concurrency as a cost backstop
+    - `NoEcho` parameters for `MCP_BEARER_TOKEN` and `FINANCIALS_ACCESS_TOKEN`, plus `FINANCIALS_API_URL` and `MCP_ALLOWED_HOSTS`
+    - CloudWatch log retention of 14 days
+    - the API URL as a stack output
+  - `.github/workflows/deploy.yml`: test, `cargo deny`, build, then `sam deploy` with an OIDC role, on manual dispatch. Actions are pinned to SHAs, and real values live in repository variables and secrets, never in git.
+  - `infra/iam/`: a least-privilege deploy policy and the OIDC trust policy with placeholders, plus a README, as in financials-api.
+  - README: deploying, rotating the bearer token, and connecting clients:
+    - **Claude Code:** `claude mcp add --transport http financials https://<api-url>/mcp --header "Authorization: Bearer <token>"`.
+    - **Claude (web, desktop, mobile):** a custom connector with the URL and a request header `Authorization` set to `Bearer <token>`. Request-header authentication for custom connectors is in beta and not available to every account yet. If the Request headers section is missing, use Claude Code; OAuth is listed under [Additional functionality](#additional-functionality).
+- **Tests/verification:**
+  - `sam validate --lint`; CI passes; the deploy workflow succeeds.
+  - Smoke test against the deployed URL: no token gets `401`; with the token, `tools/list` returns five tools.
+  - A comparison from Claude: from a phone if connector request headers are available, otherwise from Claude Code.
+  - CloudWatch shows tool-call lines and no plan contents.
+
 ## Additional functionality
 
 These items are intentionally not part of the first learning sequence. They are scoped as named follow-up milestones so a future PR can reference the item by name instead of by step number.
@@ -534,21 +629,11 @@ These items are intentionally not part of the first learning sequence. They are 
 - **Verification:**
   - Export from the UI, then run it with `financials-mcp project <file>`.
 
-### Hosting on AWS Lambda
+### OAuth for Claude custom connectors
 
 - **Status:** Future
-- **Concept:** The same tools served remotely over stateless Streamable HTTP, so they can be used from Claude on any device.
-- **Functionality:**
-  - `financials-mcp serve --http` using the SDK's stateless Streamable HTTP server transport.
-  - Lambda (arm64, `provided.al2023`) built with `cargo-lambda`, deployed with SAM and GitHub OIDC, mirroring financials-api.
-  - A function URL (or HTTP API) requiring a long random bearer token (`MCP_BEARER_TOKEN`), configured in Claude's custom connector request headers.
-  - Request size limits, the existing caps, low reserved concurrency to cap cost, and a per-tool time limit under 25 s (API Gateway allows 30 s).
-- **Tests:**
-  - Missing or wrong tokens return `401`; the correct token works.
-  - Oversized requests are rejected.
-  - Tool behavior over HTTP matches stdio (shared tests).
-- **Verification:**
-  - Deploy, add as a Claude custom connector, run a comparison from a phone.
+- **Concept:** Steps 19–22 authenticate with a static bearer token. If Claude's request-header authentication for custom connectors isn't available on the account, OAuth is the other way to connect from Claude on the web and phone.
+- **Functionality:** OAuth 2.1 protected-resource metadata and token validation in front of the HTTP transport, scoped when needed. (Hosting itself, previously listed here as "Hosting on AWS Lambda", is now Steps 19–22.)
 
 ### agent-harness MCP client support
 
