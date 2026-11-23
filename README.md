@@ -17,6 +17,7 @@ This is a learning project, built one reviewable step at a time. Each step teach
 - **Step 11 (compare scenarios):** a `compare_scenarios` tool runs a baseline plus up to 12 named scenarios concurrently (at most 4 projections at once) and reports each one's change from the baseline. See [Comparing scenarios](#comparing-scenarios).
 - **Step 12 (sweep):** a `sweep` tool varies one input across up to 25 values and reports the **breakpoints** where the plan stops (or starts) lasting. See [Sweeps](#sweeps).
 - **Step 13 (max spending):** a `find_max_spending` tool searches for the most a plan can spend each year while keeping an optional minimum balance. See [Maximum spending](#maximum-spending).
+- **Step 14 (withdrawal order):** a `withdrawal_order_options` tool compares the orders the accounts could be drawn down in and ranks them. See [Withdrawal order](#withdrawal-order).
 
 ## Requirements
 
@@ -83,7 +84,7 @@ cargo build --release      # -> target\release\financials-mcp.exe
 claude mcp add --transport stdio --env FINANCIALS_API_URL=http://localhost:8080 financials -- C:\path\to\financials-mcp\target\release\financials-mcp.exe serve
 ```
 
-Add `--scope user` to make it available in every project (the default scope is the current project only). Then ask something like *"Run a projection for this plan and tell me whether the money lasts"* and attach or paste a plan JSON. Then follow up with *"What if I retired 2 years earlier?"* or *"Compare retiring 2 years earlier against returns 1% lower,"* or *"How much later would we need to retire for the money to last?"* or *"What's the most we can spend and still have $200k left?"*
+Add `--scope user` to make it available in every project (the default scope is the current project only). Then ask something like *"Run a projection for this plan and tell me whether the money lasts"* and attach or paste a plan JSON. Then follow up with *"What if I retired 2 years earlier?"* or *"Compare retiring 2 years earlier against returns 1% lower,"* or *"How much later would we need to retire for the money to last?"* or *"What's the most we can spend and still have $200k left?"* or *"Which account should we draw from first?"*
 
 ## Overrides
 
@@ -161,6 +162,15 @@ It returns one compact point per value (`lastsThroughFinalYear`, `depletionYear`
 - **Constraints** (both optional): no unfunded years, and a balance of at least `minBalanceCents` (default 0) in every year from the first retirement through `throughYear` (default the final year). Saving years don't count, since a plan can start below the buffer and grow past it. Years after `throughYear` aren't checked, so the money may still run out later.
 - **Search:** check the least spending allowed (the API requires at least 1 cent of withdrawal), then double from the current spending until a projection fails, then binary search to within $100. At most 25 projections.
 - **Result:** `outcome` (`found`, `fails_at_zero` or `no_upper_limit`), `annualSpendingCents` (ready for a plan or the `set_annual_withdrawal` override) and `annualSpending` in dollars, `precision`, `projectionsUsed`, the summary at that amount and, for itemized plans, `scaleBasisPoints` and each scaled expense.
+
+## Withdrawal order
+
+`withdrawal_order_options` takes just a plan and compares the orders its accounts could be drawn down in. financials-api withdraws from the lowest `withdrawalPriority` group first (1 = first, 2 = normal, 3 = last), and accounts in the same group share each withdrawal in proportion to their balances. Only the order of the groups matters, so equivalent assignments are compared once.
+
+- **Candidates:** the current order, all accounts together, each account first, each account last and, for up to 3 accounts (there are only 3 priority levels), every strict order. At most 13 distinct orders, which covers every possible order for 3 accounts and the main variants for up to 6. `truncated` says if more existed.
+- **Ranking:** lasts through the final year, then latest depletion year, fewest years short, highest ending balance, least unfunded spending. Ties keep the current order first.
+- **Each option:** a description in words, `headline` numbers, `changeFromCurrent` and the `withdrawalPriority` per account, ready for the `set_item` override.
+- **Limitation:** projections include no taxes, so the ranking reflects returns and access dates only, not tax-driven advice such as "Roth last."
 
 ## Commands
 

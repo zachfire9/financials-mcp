@@ -62,7 +62,8 @@ fn serve_speaks_mcp_over_stdio_and_nothing_else() {
             "compare_scenarios",
             "find_max_spending",
             "run_projection",
-            "sweep"
+            "sweep",
+            "withdrawal_order_options"
         ]
     );
     for tool in listed {

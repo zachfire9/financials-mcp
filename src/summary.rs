@@ -46,6 +46,35 @@ pub struct Summary {
     pub currency: String,
 }
 
+/// The headline numbers of a summary, for tools that return many results at
+/// once (sweeps, withdrawal orders). Whole dollars.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Headline {
+    pub lasts_through_final_year: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depletion_year: Option<i32>,
+    pub years_short: usize,
+    pub ending_balance: i64,
+    pub lowest_balance: i64,
+    pub total_unfunded: i64,
+}
+
+// `From` is the standard trait for infallible conversions. Implementing
+// `From<&Summary> for Headline` also gives `summary.into()` for free.
+impl From<&Summary> for Headline {
+    fn from(summary: &Summary) -> Headline {
+        Headline {
+            lasts_through_final_year: summary.lasts_through_final_year,
+            depletion_year: summary.depletion_year,
+            years_short: summary.years_short,
+            ending_balance: summary.ending_balance,
+            lowest_balance: summary.lowest_balance.amount,
+            total_unfunded: summary.total_unfunded,
+        }
+    }
+}
+
 /// A year and an amount in that year.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct YearAmount {

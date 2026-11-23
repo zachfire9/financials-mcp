@@ -433,15 +433,15 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 14 — `withdrawal_order_options`
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-14-withdrawal-order-options`
-- **Pull Request:** TBD
+- **Pull Request:** [#14](https://github.com/zachfire9/financials-mcp/pull/14)
 - **Concept:** Answer "which account first?" by trying the meaningful orderings and comparing them.
 - **Rust introduced:** generating combinations, deduplicating with `HashSet`, reusing existing building blocks (overrides and compare).
 - **Functionality:**
-  - The `withdrawal_order_options(plan)` tool generates distinct `withdrawalPriority` assignments across accounts (at most 12 variants), runs them with the compare machinery, and ranks them by how long the money lasts, then by ending balance.
+  - The `withdrawal_order_options(plan)` tool generates distinct `withdrawalPriority` orders across accounts (at most 13 variants, every possible order for 3 accounts), runs them with the batch helper, and ranks them by how long the money lasts, then by ending balance.
 - **Tests (fake projector):**
-  - The variants are distinct and capped at 12.
+  - The variants are distinct and capped at 13.
   - The ranking order is correct.
   - A single-account plan returns one option with an explanation.
 - **Verification:**

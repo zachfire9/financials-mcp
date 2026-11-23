@@ -23,7 +23,7 @@ use crate::error::Error;
 use crate::overrides::{Override, apply_overrides};
 use crate::plan::Plan;
 use crate::projector::Projector;
-use crate::summary::Summary;
+use crate::summary::Headline;
 
 /// Most values in one sweep.
 pub const MAX_VALUES: usize = 25;
@@ -155,27 +155,10 @@ pub struct SweepResult {
 #[serde(rename_all = "camelCase")]
 pub struct Point {
     pub value: i64,
-    pub lasts_through_final_year: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub depletion_year: Option<i32>,
-    pub years_short: usize,
-    pub ending_balance: i64,
-    pub lowest_balance: i64,
-    pub total_unfunded: i64,
-}
-
-impl Point {
-    fn new(value: i64, summary: &Summary) -> Point {
-        Point {
-            value,
-            lasts_through_final_year: summary.lasts_through_final_year,
-            depletion_year: summary.depletion_year,
-            years_short: summary.years_short,
-            ending_balance: summary.ending_balance,
-            lowest_balance: summary.lowest_balance.amount,
-            total_unfunded: summary.total_unfunded,
-        }
-    }
+    // `flatten` writes the headline's fields next to `value`, so the JSON is
+    // unchanged from Step 12.
+    #[serde(flatten)]
+    pub headline: Headline,
 }
 
 /// Two neighboring values with different outcomes. The real threshold lies
@@ -205,8 +188,8 @@ pub fn breakpoints(points: &[Point]) -> Vec<Breakpoint> {
                 return None;
             };
             match (
-                before.lasts_through_final_year,
-                after.lasts_through_final_year,
+                before.headline.lasts_through_final_year,
+                after.headline.lasts_through_final_year,
             ) {
                 (true, false) => Some(Breakpoint {
                     lasts_at: before.value,
@@ -266,7 +249,12 @@ pub async fn run_sweep<P: Projector + 'static>(
         .values
         .iter()
         .zip(summaries)
-        .map(|(&value, summary)| Ok(Point::new(value, &summary?)))
+        .map(|(&value, summary)| {
+            Ok(Point {
+                value,
+                headline: Headline::from(&summary?),
+            })
+        })
         .collect::<Result<Vec<Point>, Error>>()?;
 
     Ok(SweepResult {
@@ -326,7 +314,10 @@ mod tests {
     }
 
     fn lasts(points: &[Point]) -> Vec<bool> {
-        points.iter().map(|p| p.lasts_through_final_year).collect()
+        points
+            .iter()
+            .map(|p| p.headline.lasts_through_final_year)
+            .collect()
     }
 
     #[tokio::test]
@@ -349,8 +340,8 @@ mod tests {
             }]
         );
         assert_eq!(result.points[0].value, 4_000_000);
-        assert_eq!(result.points[0].ending_balance, 15_000);
-        assert_eq!(result.points[2].depletion_year, Some(36));
+        assert_eq!(result.points[0].headline.ending_balance, 15_000);
+        assert_eq!(result.points[2].headline.depletion_year, Some(36));
     }
 
     #[tokio::test]
@@ -399,12 +390,14 @@ mod tests {
     fn every_change_of_outcome_is_a_breakpoint() {
         let point = |value, lasts| Point {
             value,
-            lasts_through_final_year: lasts,
-            depletion_year: None,
-            years_short: 0,
-            ending_balance: 0,
-            lowest_balance: 0,
-            total_unfunded: 0,
+            headline: Headline {
+                lasts_through_final_year: lasts,
+                depletion_year: None,
+                years_short: 0,
+                ending_balance: 0,
+                lowest_balance: 0,
+                total_unfunded: 0,
+            },
         };
         let points = [
             point(1, true),

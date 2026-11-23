@@ -32,6 +32,7 @@ use crate::plan::Plan;
 use crate::projector::{Projector, project_and_summarize};
 use crate::summary::Summary;
 use crate::sweep::{Parameter, Sweep, SweepResult, run_sweep};
+use crate::withdrawal_order::{WithdrawalOrderOptions, withdrawal_order_options};
 
 /// What the model reads when it connects. Kept short; Step 15 refines it.
 pub const INSTRUCTIONS: &str = "\
@@ -42,7 +43,8 @@ Results are in whole dollars. Projections use fixed annual returns and no taxes,
 so mention those limitations and the assumptions returned with each result. \
 To compare options, prefer one compare_scenarios call over several run_projection calls; \
 to find where a plan stops working, use sweep; \
-for the most a plan can spend, use find_max_spending rather than guessing amounts.";
+for the most a plan can spend, use find_max_spending rather than guessing amounts; \
+for which account to draw from first, use withdrawal_order_options.";
 
 /// Arguments for `run_projection`.
 ///
@@ -135,6 +137,24 @@ pub struct FindMaxSpendingArgs {
 pub struct MaxSpendingResult {
     #[serde(flatten)]
     pub search: MaxSpending,
+    pub assumptions: Assumptions,
+}
+
+/// Arguments for `withdrawal_order_options`.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WithdrawalOrderArgs {
+    /// The plan whose withdrawal order to compare.
+    #[schemars(with = "Plan")]
+    pub plan: serde_json::Value,
+}
+
+/// The successful result of `withdrawal_order_options`, plus the plan's
+/// assumptions.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WithdrawalOrderResult {
+    #[serde(flatten)]
+    pub options: WithdrawalOrderOptions,
     pub assumptions: Assumptions,
 }
 
@@ -342,6 +362,43 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         Ok(tool_result(self.max_spending(args).await))
     }
 
+    /// Compare the orders the plan's accounts could be drawn down in: the
+    /// current order, all accounts together (in proportion to balances), each
+    /// account first, each account last and, for up to 3 accounts, every
+    /// strict order. At most 13 distinct orders, ranked best first by how
+    /// long the money lasts, then ending balance. Each option has a
+    /// description, headline numbers, its change from the current order, and
+    /// the `withdrawalPriority` per account (usable with the `set_item`
+    /// override). Amounts are whole dollars. Rankings reflect each account's
+    /// returns and access dates only: projections include no taxes, so
+    /// tax-driven orders (such as taxable first, Roth last) aren't captured;
+    /// say so when presenting them.
+    #[tool(annotations(
+        title = "Compare withdrawal orders",
+        read_only_hint = true,
+        destructive_hint = false,
+        idempotent_hint = true,
+        open_world_hint = false
+    ))]
+    pub async fn withdrawal_order_options(
+        &self,
+        Parameters(args): Parameters<WithdrawalOrderArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        Ok(tool_result(self.withdrawal_orders(args).await))
+    }
+
+    async fn withdrawal_orders(
+        &self,
+        args: WithdrawalOrderArgs,
+    ) -> Result<WithdrawalOrderResult, Error> {
+        let plan = Plan::from_json(&args.plan.to_string())?;
+        let options = withdrawal_order_options(Arc::clone(&self.projector), &plan).await?;
+        Ok(WithdrawalOrderResult {
+            options,
+            assumptions: Assumptions::from_plan(&plan, Vec::new()),
+        })
+    }
+
     async fn max_spending(&self, args: FindMaxSpendingArgs) -> Result<MaxSpendingResult, Error> {
         let plan = Plan::from_json(&args.plan.to_string())?;
         let constraints = Constraints::from_value(args.constraints.unwrap_or_default())?;
@@ -535,7 +592,8 @@ mod tests {
                 "compare_scenarios",
                 "find_max_spending",
                 "run_projection",
-                "sweep"
+                "sweep",
+                "withdrawal_order_options"
             ]
         );
         for tool in &tools {
@@ -925,5 +983,39 @@ mod tests {
             text_of(&result),
             "constraint problem at `constraints.throughYear`: must be between 1 and the plan's final year (40)"
         );
+    }
+
+    #[tokio::test]
+    async fn withdrawal_order_options_ranks_the_orders() {
+        let client = connect(FakeProjector::from_fn(|_| Ok(projection()))).await;
+        let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
+
+        let result = client
+            .call_tool(
+                CallToolRequestParams::new("withdrawal_order_options").with_arguments(
+                    serde_json::json!({ "plan": plan })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+
+        assert_ne!(result.is_error, Some(true), "{}", text_of(&result));
+        let body: serde_json::Value = serde_json::from_str(text_of(&result)).unwrap();
+        let options = body["options"].as_array().unwrap();
+        assert_eq!(options.len(), 13);
+        assert_eq!(body["truncated"], false);
+        // Identical outcomes: the stable sort keeps the current order first.
+        assert_eq!(options[0]["rank"], 1);
+        assert_eq!(options[0]["isCurrent"], true);
+        assert_eq!(
+            options[0]["description"],
+            "Example brokerage first, then Example 401(k), then Example Roth IRA"
+        );
+        assert_eq!(options[0]["headline"]["depletionYear"], 36);
+        assert_eq!(options[0]["priorities"][2]["itemId"], "item-brokerage");
+        assert_eq!(body["assumptions"]["drawdownYears"], 30);
     }
 }
