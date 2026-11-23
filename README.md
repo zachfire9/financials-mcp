@@ -14,6 +14,7 @@ This is a learning project, built one reviewable step at a time. Each step teach
 - **Step 08 (debug command):** `financials-mcp project <plan.json>` runs a plan through financials-api and prints the summary.
 - **Step 09 (MCP server):** `financials-mcp serve` speaks MCP over stdio with one tool, `run_projection`.
 - **Step 10 (overrides):** `run_projection` takes optional `overrides` (retire earlier, spend less, lower returns, add an expense, and more) applied to a copy of the plan. See [Overrides](#overrides).
+- **Step 11 (compare scenarios):** a `compare_scenarios` tool runs a baseline plus up to 12 named scenarios concurrently (at most 4 projections at once) and reports each one's change from the baseline. See [Comparing scenarios](#comparing-scenarios).
 
 ## Requirements
 
@@ -80,7 +81,7 @@ cargo build --release      # -> target\release\financials-mcp.exe
 claude mcp add --transport stdio --env FINANCIALS_API_URL=http://localhost:8080 financials -- C:\path\to\financials-mcp\target\release\financials-mcp.exe serve
 ```
 
-Add `--scope user` to make it available in every project (the default scope is the current project only). Then ask something like *"Run a projection for this plan and tell me whether the money lasts"* and attach or paste a plan JSON. Then follow up with *"What if I retired 2 years earlier?"*
+Add `--scope user` to make it available in every project (the default scope is the current project only). Then ask something like *"Run a projection for this plan and tell me whether the money lasts"* and attach or paste a plan JSON. Then follow up with *"What if I retired 2 years earlier?"* or *"Compare retiring 2 years earlier against returns 1% lower."*
 
 ## Overrides
 
@@ -110,6 +111,24 @@ Add `--scope user` to make it available in every project (the default scope is t
 | `set_inflation` | `basisPoints` | Sets the withdrawal inflation rate. |
 
 The result's `assumptions` describe the changed plan and echo the overrides. Errors name the override at fault, such as `overrides[1] (shift_retirement): no person with id ...`, and never quote amounts. At most 20 overrides per call.
+
+## Comparing scenarios
+
+`compare_scenarios` takes the baseline plan and up to 12 named scenarios, each a list of [overrides](#overrides):
+
+```json
+{
+  "plan": { "...": "..." },
+  "scenarios": [
+    { "name": "Retire 2 years later", "overrides": [{ "op": "shift_retirement", "years": 2 }] },
+    { "name": "Spend 15% less", "overrides": [{ "op": "scale_expenses", "percent": 85 }] }
+  ]
+}
+```
+
+It returns the baseline's summary and assumptions, then one row per scenario in request order: its summary plus `changeFromBaseline` (scenario minus baseline: `depletionYear`, `yearsShort`, `endingBalance`, `lowestBalance`, `totalUnfunded`; positive means later, more or bigger). A scenario whose overrides don't apply, or whose projection fails, gets an `error` row instead and doesn't affect the others. A bad base plan or a failed baseline fails the whole call.
+
+Scenario names must be unique and at most 80 characters. Projections run at most 4 at a time, to be polite to financials-api.
 
 ## Commands
 
