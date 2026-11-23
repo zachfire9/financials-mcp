@@ -143,7 +143,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 | `compare_scenarios(plan, scenarios[])` | A baseline plus named scenarios, run in parallel, each with its difference from the baseline | 12 scenarios |
 | `sweep(plan, parameter, values[])` | Varies one parameter and reports the breakpoint where the plan stops lasting | 25 values |
 | `find_max_spending(plan, constraints)` | Binary search for the highest spending that keeps `minBalance` through `throughYear` | 25 projections, $100 precision |
-| `withdrawal_order_options(plan)` | Compares `withdrawalPriority` orderings across accounts | 12 variants |
+| `withdrawal_order_options(plan)` | Compares `withdrawalPriority` orderings across accounts | 13 variants |
 
 ### Override operations
 
