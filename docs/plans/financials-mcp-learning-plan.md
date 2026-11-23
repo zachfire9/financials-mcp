@@ -469,7 +469,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-16-safe-logging`
-- **Pull Request:** PR_LINK
+- **Pull Request:** [#16](https://github.com/zachfire9/financials-mcp/pull/16)
 - **Concept:** You need to see what the server did without ever logging private financial data, and in stdio mode logs must never touch stdout.
 - **Rust introduced:** the `tracing` crate (spans, fields, subscribers), writing to stderr, structured fields.
 - **Functionality:**
