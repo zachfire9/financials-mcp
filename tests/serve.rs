@@ -49,11 +49,21 @@ fn serve_speaks_mcp_over_stdio_and_nothing_else() {
     writeln!(stdin, "{}", messages[2]).unwrap();
     let tools = read_message();
     assert_eq!(tools["id"], 2);
-    assert_eq!(tools["result"]["tools"][0]["name"], "run_projection");
-    assert_eq!(
-        tools["result"]["tools"][0]["annotations"]["readOnlyHint"],
-        true
-    );
+    // Tools come back in no particular order, so sort the names.
+    let listed = tools["result"]["tools"].as_array().unwrap();
+    let mut names: Vec<&str> = listed
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["compare_scenarios", "run_projection"]);
+    for tool in listed {
+        assert_eq!(
+            tool["annotations"]["readOnlyHint"], true,
+            "{}",
+            tool["name"]
+        );
+    }
 
     // Closing stdin is how a client disconnects; the server should then exit
     // cleanly and have printed nothing else to stdout.

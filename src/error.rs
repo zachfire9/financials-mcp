@@ -42,6 +42,11 @@ pub enum Error {
     #[error("override problem at `{location}`: {problem}")]
     OverrideShape { location: String, problem: String },
 
+    /// A list of scenarios that isn't the right shape, or breaks the count,
+    /// name or uniqueness rules.
+    #[error("scenario problem at `{location}`: {problem}")]
+    ScenarioShape { location: String, problem: String },
+
     /// An override that can't be applied to this plan, or whose result breaks
     /// a plan rule. Names the override by position and `op`. `&'static str`
     /// is a string literal compiled into the program, so no allocation.
@@ -158,7 +163,8 @@ fn friendly_type(expected: &str) -> &str {
         | "struct PersonInput"
         | "struct ExpenseInput"
         | "struct MortgageInput"
-        | "internally tagged enum Override" => "an object",
+        | "internally tagged enum Override"
+        | "struct Scenario" => "an object",
         _ => expected,
     }
 }

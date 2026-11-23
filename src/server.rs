@@ -24,6 +24,7 @@ use rmcp::{ErrorData, ServerHandler, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::compare::{Scenario, ScenarioRow, compare_scenarios};
 use crate::error::Error;
 use crate::overrides::{Override, apply_overrides};
 use crate::plan::Plan;
@@ -36,7 +37,8 @@ Retirement projection tools backed by the financials-api engine. \
 Use these tools for every number: never estimate or calculate a projection yourself. \
 A plan is the financials-api projection request: money in integer cents, rates in basis points (700 = 7%). \
 Results are in whole dollars. Projections use fixed annual returns and no taxes, \
-so mention those limitations and the assumptions returned with each result.";
+so mention those limitations and the assumptions returned with each result. \
+To compare options, prefer one compare_scenarios call over several run_projection calls.";
 
 /// Arguments for `run_projection`.
 ///
@@ -58,6 +60,27 @@ pub struct RunProjectionArgs {
     #[serde(default)]
     #[schemars(with = "Option<Vec<Override>>")]
     pub overrides: Option<serde_json::Value>,
+}
+
+/// Arguments for `compare_scenarios`. Raw JSON for the same reasons as
+/// [`RunProjectionArgs`].
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CompareScenariosArgs {
+    /// The baseline plan every scenario starts from.
+    #[schemars(with = "Plan")]
+    pub plan: serde_json::Value,
+    /// Up to 12 named scenarios, each a list of overrides to the baseline.
+    #[schemars(with = "Vec<Scenario>")]
+    pub scenarios: serde_json::Value,
+}
+
+/// The successful result of `compare_scenarios`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComparisonResult {
+    /// The baseline's summary and assumptions.
+    pub baseline: ProjectionResult,
+    pub scenarios: Vec<ScenarioRow>,
 }
 
 /// The successful result of `run_projection`.
@@ -197,11 +220,41 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         // Problems with the plan or the API are not protocol failures: they're
         // returned as a normal result marked `isError`, so the model reads the
         // message and can fix the plan or explain the problem.
-        Ok(match self.project(args).await {
-            Ok(result) => CallToolResult::success(vec![ContentBlock::text(
-                serde_json::to_string_pretty(&result).expect("a result always serializes"),
-            )]),
-            Err(err) => CallToolResult::error(vec![ContentBlock::text(err.to_string())]),
+        Ok(tool_result(self.project(args).await))
+    }
+
+    /// Compare a baseline plan with up to 12 named scenarios in one call.
+    /// Each scenario is a list of overrides (the same ones `run_projection`
+    /// accepts). Returns the baseline's summary and assumptions, then one row
+    /// per scenario, in order: its summary and its change from the baseline
+    /// (positive = later, more or bigger), or an error for that scenario
+    /// alone. Amounts are whole dollars.
+    #[tool(annotations(
+        title = "Compare retirement scenarios",
+        read_only_hint = true,
+        destructive_hint = false,
+        idempotent_hint = true,
+        open_world_hint = false
+    ))]
+    pub async fn compare_scenarios(
+        &self,
+        Parameters(args): Parameters<CompareScenariosArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        Ok(tool_result(self.compare(args).await))
+    }
+
+    async fn compare(&self, args: CompareScenariosArgs) -> Result<ComparisonResult, Error> {
+        let plan = Plan::from_json(&args.plan.to_string())?;
+        let scenarios = Scenario::list_from_value(args.scenarios)?;
+        // `Arc::clone` hands the comparison its own shared handle to the
+        // projector, which it passes on to each spawned task.
+        let comparison = compare_scenarios(Arc::clone(&self.projector), &plan, &scenarios).await?;
+        Ok(ComparisonResult {
+            baseline: ProjectionResult {
+                summary: comparison.baseline,
+                assumptions: Assumptions::from_plan(&plan, Vec::new()),
+            },
+            scenarios: comparison.scenarios,
         })
     }
 
@@ -226,6 +279,20 @@ impl<P: Projector + 'static> FinancialsServer<P> {
             summary,
             assumptions: Assumptions::from_plan(&plan, overrides),
         })
+    }
+}
+
+/// Turns a tool's outcome into an MCP result: pretty JSON on success, or the
+/// error text marked `isError` so the model can read it.
+///
+/// `impl Serialize` in argument position accepts any serializable type: it's
+/// shorthand for a generic `<T: Serialize>(outcome: Result<T, Error>)`.
+fn tool_result(outcome: Result<impl Serialize, Error>) -> CallToolResult {
+    match outcome {
+        Ok(result) => CallToolResult::success(vec![ContentBlock::text(
+            serde_json::to_string_pretty(&result).expect("a result always serializes"),
+        )]),
+        Err(err) => CallToolResult::error(vec![ContentBlock::text(err.to_string())]),
     }
 }
 
@@ -331,13 +398,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn lists_exactly_one_read_only_tool_with_the_plan_schema() {
+    async fn lists_read_only_tools_with_the_plan_schema() {
         let client = connect(FakeProjector::scripted(Vec::new())).await;
 
         let tools = client.list_all_tools().await.unwrap();
 
-        assert_eq!(tools.len(), 1);
-        let tool = &tools[0];
+        let mut names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
+        names.sort();
+        assert_eq!(names, ["compare_scenarios", "run_projection"]);
+        for tool in &tools {
+            let annotations = tool.annotations.as_ref().expect("annotations");
+            assert_eq!(annotations.read_only_hint, Some(true), "{}", tool.name);
+        }
+        let tool = tools
+            .iter()
+            .find(|tool| tool.name == "run_projection")
+            .unwrap();
         assert_eq!(tool.name, "run_projection");
         assert!(
             tool.description
@@ -521,6 +597,68 @@ mod tests {
             text_of(&result).starts_with("override problem at `overrides[0].op`"),
             "{}",
             text_of(&result)
+        );
+    }
+
+    #[tokio::test]
+    async fn compare_scenarios_returns_the_baseline_and_rows() {
+        let fake = FakeProjector::from_fn(|_| Ok(projection()));
+        let client = connect(fake).await;
+        let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
+
+        let result = client
+            .call_tool(
+                CallToolRequestParams::new("compare_scenarios").with_arguments(
+                    serde_json::json!({
+                        "plan": plan,
+                        "scenarios": [
+                            {"name": "Lower returns", "overrides": [{"op": "adjust_returns", "basisPoints": -100}]},
+                            {"name": "Unknown item", "overrides": [{"op": "set_item", "itemId": "nope", "withdrawalPriority": 1}]}
+                        ]
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+
+        assert_ne!(result.is_error, Some(true), "{}", text_of(&result));
+        let body: serde_json::Value = serde_json::from_str(text_of(&result)).unwrap();
+        assert_eq!(body["baseline"]["summary"]["depletionYear"], 36);
+        assert_eq!(body["baseline"]["assumptions"]["drawdownYears"], 30);
+        assert_eq!(body["scenarios"][0]["name"], "Lower returns");
+        assert_eq!(body["scenarios"][0]["changeFromBaseline"]["yearsShort"], 0);
+        assert!(
+            body["scenarios"][1]["error"]
+                .as_str()
+                .unwrap()
+                .contains("no item with id `nope`")
+        );
+    }
+
+    #[tokio::test]
+    async fn compare_scenarios_rejects_a_bad_scenario_list() {
+        let client = connect(FakeProjector::scripted(Vec::new())).await;
+        let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
+
+        let result = client
+            .call_tool(
+                CallToolRequestParams::new("compare_scenarios").with_arguments(
+                    serde_json::json!({ "plan": plan, "scenarios": [] })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.is_error, Some(true));
+        assert_eq!(
+            text_of(&result),
+            "scenario problem at `scenarios`: give between 1 and 12 scenarios"
         );
     }
 }
