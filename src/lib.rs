@@ -1,15 +1,26 @@
 //! financials-mcp: an MCP server that lets AI agents run retirement
 //! projections through financials-api.
 //!
-//! This file is the root of the **library crate**. Almost all logic lives
-//! here (and, later, in modules below it) so it can be tested directly.
-//! `src/main.rs` is the **binary crate**: a thin entrypoint that calls into
-//! this library. Cargo builds both from the same package, and the binary
-//! refers to the library by the package name with `-` replaced by `_`:
-//! `financials_mcp`.
+//! This file is the root of the **library crate**. Almost all logic lives in
+//! the modules below it so it can be tested directly. `src/main.rs` is the
+//! **binary crate**: a thin entrypoint that calls into this library. Cargo
+//! builds both from the same package, and the binary refers to the library by
+//! the package name with `-` replaced by `_`: `financials_mcp`.
 //!
-//! Step 01 only sets up the project; the planner tools arrive in later steps
-//! (see `docs/plans/financials-mcp-learning-plan.md`).
+//! The modules, roughly in the order a tool call passes through them (see
+//! `docs/architecture.md` for the full picture):
+//!
+//! - [`server`]: the MCP tools; [`guidance`]: what the model is told;
+//!   [`logging`]: one log line per tool call, never plan contents.
+//! - [`plan`]: the input; [`overrides`]: "what if" changes to a copy of it.
+//! - [`compare`], [`sweep`], [`max_spending`], [`withdrawal_order`]: the batch
+//!   tools, which run many projections through [`batch`].
+//! - [`projector`]: the `Projector` trait (and a fake for tests); [`api`]: the
+//!   real one, calling financials-api; [`config`]: its settings.
+//! - [`projection`]: the API's answer; [`summary`]: the compact version tools
+//!   return.
+//! - [`error`]: every failure, with messages that never quote plan values;
+//!   [`cli`]: the `project` debug command.
 
 // `pub mod plan;` declares a module and tells the compiler to load it from
 // `src/plan.rs`. Unlike Go (every file in a folder is one package) or Python
@@ -50,7 +61,10 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// It returns an owned `String` (built with `format!`), rather than borrowing
 /// text, because the result is assembled at runtime.
 pub fn banner() -> String {
-    format!("{NAME} {VERSION}: retirement projection tools for AI agents (not implemented yet)")
+    format!(
+        "{NAME} {VERSION}: retirement projection tools for AI agents. \
+         Run `{NAME} serve` to start the MCP server, or `{NAME} --help`."
+    )
 }
 
 // Unit tests live next to the code they test, in a `tests` module that is
@@ -66,10 +80,11 @@ mod tests {
     }
 
     #[test]
-    fn banner_says_tools_are_not_implemented_yet() {
+    fn banner_points_to_serve_and_help() {
         assert_eq!(
             banner(),
-            "financials-mcp 0.1.0: retirement projection tools for AI agents (not implemented yet)"
+            "financials-mcp 0.1.0: retirement projection tools for AI agents. \
+             Run `financials-mcp serve` to start the MCP server, or `financials-mcp --help`."
         );
     }
 }

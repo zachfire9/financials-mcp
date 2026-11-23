@@ -122,3 +122,22 @@ async fn an_unreachable_api_exits_with_code_1_and_a_clear_message() {
         text(&output.stderr)
     );
 }
+
+#[test]
+fn help_text_is_written_for_users_with_no_implementation_notes() {
+    for args in [
+        &["--help"][..],
+        &["project", "--help"],
+        &["serve", "--help"],
+    ] {
+        let output = Command::new(BINARY).args(args).output().unwrap();
+        let help = text(&output.stdout);
+        assert!(output.status.success(), "{args:?}");
+        for leak in ["///", "Rust", "clap", "`Option`", "derive"] {
+            assert!(
+                !help.contains(leak),
+                "{args:?} help mentions {leak:?}:\n{help}"
+            );
+        }
+    }
+}

@@ -47,34 +47,13 @@ small concept -> failing or updated test -> minimal implementation -> passing te
 
 ## Proposed project shape
 
-The layout can evolve, but the intended direction is:
+This section started as the intended layout. What was actually built (Steps 1–18) is listed in the README's [Project layout](../../README.md#project-layout) and described module by module in [docs/architecture.md](../architecture.md#modules). In short:
 
-```text
-financials-mcp/
-  src/
-    main.rs        # thin entrypoint: parse CLI, run a command
-    lib.rs         # library root; everything testable lives below it
-    cli.rs         # subcommands: `project` (debug), `serve` (MCP)
-    config.rs      # environment / .env loading, redacted Debug
-    error.rs       # error types
-    plan.rs        # serde types mirroring the API request (the "plan")
-    projection.rs  # serde types mirroring the API response
-    summary.rs     # projection -> compact summary
-    projector.rs   # Projector trait, fake projector for tests
-    api.rs         # financials-api HTTP client (implements Projector)
-    overrides.rs   # scenario override operations
-    scenarios.rs   # compare, sweep, withdrawal orders
-    solver.rs      # find_max_spending search
-    server.rs      # MCP server: tools, instructions, annotations
-  tests/
-    fixtures/      # made-up plans and API responses
-  docs/
-    plans/
-  Cargo.toml
-  README.md
-  AGENTS.md
-  .env.example
-```
+- The planned `scenarios.rs` became `compare.rs`, `sweep.rs` and `withdrawal_order.rs`, plus `batch.rs` for the shared concurrency.
+- The planned `solver.rs` became `max_spending.rs`.
+- `guidance.rs` and `logging.rs` were added in Steps 15 and 16.
+
+Steps 19–22 add the HTTP transport, auth and limits, and a Lambda binary.
 
 ## Design reference
 
@@ -116,32 +95,34 @@ Today the UI's "download backup" exports only `items`. People, expenses, the mor
 
 ### Summary shape
 
-Every tool reports projections as a compact summary computed from the API's `Projection.totals`:
+Every tool reports projections as a compact summary computed from the API's `Projection.totals` (`summary.rs`). Amounts are whole dollars. This is the real summary for the basic fixture plan:
 
 ```json
 {
   "lastsThroughFinalYear": false,
-  "depletionYear": 27,
+  "depletionYear": 36,
+  "yearsShort": 5,
   "endingBalance": 0,
-  "lowestBalance": {"year": 27, "amount": 0},
-  "totalWithdrawn": 1840000,
-  "totalUnfunded": 96000,
-  "phases": {"savingYears": 8, "transitionYears": 2, "drawdownYears": 30},
-  "mortgagePayoffYear": 14
+  "lowestBalance": {"year": 36, "amount": 0},
+  "totalWithdrawn": 2716528,
+  "totalUnfunded": 655422,
+  "phases": {"savingYears": 10, "transitionYears": 0, "drawdownYears": 30},
+  "currency": "USD"
 }
 ```
 
-- `depletionYear` is the first year with `unfundedWithdrawalCents > 0`, or `null` if the plan never falls short.
-- `lockedBalance` is reported when accounts can't yet be drawn from, so "money exists but is locked" isn't mistaken for "money ran out".
-- Outputs use whole dollars, and every result includes an `assumptions` block (returns, inflation, timeline).
+- `depletionYear` is the first year with `unfundedWithdrawalCents > 0`, or absent if the plan never falls short. `yearsShort` counts the short years.
+- `lockedWhenShort` appears when money existed but couldn't be withdrawn yet in the first short year, so "locked" isn't mistaken for "ran out".
+- `mortgage.paidOffInYear` appears for plans with a mortgage.
+- Batch tools return a smaller `Headline` per result. Every tool includes an `assumptions` block (timeline, inflation, returns).
 
 ### Tools
 
 | Tool | What it does | Limits |
 |---|---|---|
-| `run_projection(plan, overrides?)` | One projection, returning a summary; `detail: "yearly"` adds a slim per-year series | — |
+| `run_projection(plan, overrides?)` | One projection, returning a summary and its assumptions | 20 overrides |
 | `compare_scenarios(plan, scenarios[])` | A baseline plus named scenarios, run in parallel, each with its difference from the baseline | 12 scenarios |
-| `sweep(plan, parameter, values[])` | Varies one parameter and reports the breakpoint where the plan stops lasting | 25 values |
+| `sweep(plan, parameter, values[])` | Varies one parameter and reports the breakpoints where the outcome changes | 25 values |
 | `find_max_spending(plan, constraints)` | Binary search for the highest spending that keeps `minBalance` through `throughYear` | 25 projections, $100 precision |
 | `withdrawal_order_options(plan)` | Compares `withdrawalPriority` orderings across accounts | 13 variants |
 
@@ -507,16 +488,17 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 18 — Learning walkthrough documentation
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-18-learning-walkthrough-docs`
-- **Pull Request:** TBD
+- **Pull Request:** [#20](https://github.com/zachfire9/financials-mcp/pull/20)
 - **Concept:** The repo should be both a working app and a learning artifact.
 - **Functionality:**
-  - Expand the README with a walkthrough of the completed steps.
-  - Explain the architecture: the plan, the projector trait, the API client, the tools and the MCP transport.
-  - Explain how an agent uses the tools, with an example conversation.
-  - Explain the test strategy, how to run it locally against financials-api, and how to connect Claude Desktop/Code.
-  - Summarize which Rust concepts each step introduced.
+  - A walkthrough of the completed steps (`docs/walkthrough.md`), linked from a shorter README.
+  - The architecture: the plan, the projector trait, the API client, the tools and the MCP transport (`docs/architecture.md`).
+  - How an agent uses the tools, with an example conversation using real results for a fixture plan.
+  - The test strategy, how to run it locally against financials-api, and how to connect Claude Desktop/Code.
+  - Which Rust concepts each step introduced (`docs/rust-concepts.md`), and a tool reference (`docs/tools.md`).
+  - `tests/docs.rs` checks links and anchors, and that the docs list every tool, subcommand, setting and source file.
 - **Tests/verification:**
   - `cargo test`
   - Manually verify documented commands still match the app.
