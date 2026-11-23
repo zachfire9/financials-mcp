@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Keep the pinned action commit SHAs in .github/workflows current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  # Crate updates. Patch and minor bumps arrive as one grouped PR a week so
+  # they're easy to review together; major versions get their own PRs, since
+  # they can need code changes. CI (tests + cargo deny) checks each one.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      cargo-minor-and-patch:
+        update-types:
+          - minor
+          - patch

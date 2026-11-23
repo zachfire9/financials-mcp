@@ -14,6 +14,7 @@ It is also a **learning project**: each step on the plan teaches one Rust or MCP
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test                    # run before every commit
+cargo deny check              # dependency policy; run after changing dependencies
 cargo run
 ```
 
@@ -39,7 +40,7 @@ cargo run
 - **No plan contents in logs or errors:** log tool names, timings, counts and error kinds only. Never amounts, names or tokens.
 - **stdout belongs to the MCP protocol** once the stdio server exists (Step 09); logs go to stderr.
 - Secrets (`FINANCIALS_ACCESS_TOKEN`, later `MCP_BEARER_TOKEN`) come from the environment or a local `.env`, are never printed (redact them in `Debug`), and are never committed.
-- Ask for the narrowest access and dependencies a step needs; new dependencies should be justified in the PR.
+- Ask for the narrowest access and dependencies a step needs; new dependencies should be justified in the PR and must pass `cargo deny check` (`deny.toml`). Never add an advisory to `ignore` without a reason and a revisit date.
 
 ## Public repo rules
 

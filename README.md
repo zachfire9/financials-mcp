@@ -20,6 +20,7 @@ This is a learning project, built one reviewable step at a time. Each step teach
 - **Step 14 (withdrawal order):** a `withdrawal_order_options` tool compares the orders the accounts could be drawn down in and ranks them. See [Withdrawal order](#withdrawal-order).
 - **Step 15 (model guidance):** the server instructions and every tool description were rewritten as a set, and every limit's error suggests a fix. See [What the model is told](#what-the-model-is-told).
 - **Step 16 (safe logging):** `serve` logs one line per tool call to stderr (tool, duration, projections, error kind), never plan contents. See [Logs](#logs).
+- **Step 17 (dependency checks):** `cargo deny` checks advisories, licenses, banned crates and sources in CI (and weekly), and Dependabot keeps crates and actions current. See [Dependencies](#dependencies).
 
 ## Requirements
 
@@ -207,9 +208,22 @@ cargo run                                   # build and run the binary
 cargo test                                  # unit + integration tests
 cargo fmt --check                           # formatting
 cargo clippy --all-targets -- -D warnings   # lints, warnings fail
+cargo deny check                            # dependency policy (deny.toml)
 ```
 
-CI runs the last three on every push and pull request, on Linux and Windows.
+CI runs fmt, clippy and the tests on every push and pull request, on Linux and Windows, plus `cargo deny check` on Linux. It also runs weekly, so a newly published advisory shows up even when nothing changed. Install cargo-deny with `cargo install cargo-deny --locked`.
+
+## Dependencies
+
+[`deny.toml`](deny.toml) is the policy every dependency must meet. CI enforces it with `cargo deny check`:
+
+- **Advisories:** no known vulnerabilities or yanked versions (from the [RustSec](https://rustsec.org) database), and no unmaintained direct dependencies. An ignored advisory must name its id, a reason and a revisit date.
+- **Licenses:** permissive licenses only (MIT, Apache-2.0, BSD-3-Clause, ISC and a few more). A license on the list that nothing uses also fails, so the list stays accurate.
+- **Bans:** no native OpenSSL or native-tls, since TLS is rustls. Duplicate versions are warnings.
+- **Sources:** crates.io only, with no git dependencies or other registries.
+
+`Cargo.lock` is committed and CI builds with `--locked`, so every build uses exactly the versions that were reviewed. Dependabot opens weekly PRs: crate patch and minor updates grouped into one, major versions separately, and pinned GitHub Actions SHAs. The cargo-deny binary in CI is pinned by version and SHA-256 in `.github/workflows/ci.yml`. Update both values together from the release's `.sha256` file.
+
 
 ## Project layout
 
