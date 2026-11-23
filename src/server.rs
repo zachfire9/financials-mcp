@@ -30,6 +30,7 @@ use crate::overrides::{Override, apply_overrides};
 use crate::plan::Plan;
 use crate::projector::{Projector, project_and_summarize};
 use crate::summary::Summary;
+use crate::sweep::{Parameter, Sweep, SweepResult, run_sweep};
 
 /// What the model reads when it connects. Kept short; Step 15 refines it.
 pub const INSTRUCTIONS: &str = "\
@@ -38,7 +39,8 @@ Use these tools for every number: never estimate or calculate a projection yours
 A plan is the financials-api projection request: money in integer cents, rates in basis points (700 = 7%). \
 Results are in whole dollars. Projections use fixed annual returns and no taxes, \
 so mention those limitations and the assumptions returned with each result. \
-To compare options, prefer one compare_scenarios call over several run_projection calls.";
+To compare options, prefer one compare_scenarios call over several run_projection calls; \
+to find where a plan stops working, use sweep.";
 
 /// Arguments for `run_projection`.
 ///
@@ -81,6 +83,35 @@ pub struct ComparisonResult {
     /// The baseline's summary and assumptions.
     pub baseline: ProjectionResult,
     pub scenarios: Vec<ScenarioRow>,
+}
+
+/// Arguments for `sweep`. Raw JSON for the same reasons as
+/// [`RunProjectionArgs`].
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SweepArgs {
+    /// The plan to vary.
+    #[schemars(with = "Plan")]
+    pub plan: serde_json::Value,
+    /// Which input to vary.
+    #[schemars(with = "Parameter")]
+    pub parameter: serde_json::Value,
+    /// 1 to 25 values in strictly ascending order, in the parameter's units:
+    /// cents for `annual_withdrawal`, years for `retirement_shift`, basis
+    /// points for `return_adjustment`, percent for `expense_scale`.
+    #[schemars(with = "Vec<i64>")]
+    pub values: serde_json::Value,
+}
+
+/// The successful result of `sweep`: the series and breakpoints, plus the
+/// base plan's assumptions.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SweepToolResult {
+    // `flatten` puts the sweep's own fields (`parameter`, `points`,
+    // `breakpoints`) at the top level, next to `assumptions`.
+    #[serde(flatten)]
+    pub sweep: SweepResult,
+    pub assumptions: Assumptions,
 }
 
 /// The successful result of `run_projection`.
@@ -241,6 +272,42 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         Parameters(args): Parameters<CompareScenariosArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         Ok(tool_result(self.compare(args).await))
+    }
+
+    /// Vary one input across up to 25 ascending values and show where the
+    /// plan stops (or starts) lasting through its final year. Parameters:
+    /// `annual_withdrawal` (cents), `retirement_shift` (years, + is later),
+    /// `return_adjustment` (basis points added to every return),
+    /// `expense_scale` (percent of current spending). Returns one compact
+    /// point per value and the breakpoints: neighboring values where the
+    /// outcome changes (`lastsAt` / `shortAt`). Amounts are whole dollars.
+    #[tool(annotations(
+        title = "Sweep one input across a range",
+        read_only_hint = true,
+        destructive_hint = false,
+        idempotent_hint = true,
+        open_world_hint = false
+    ))]
+    pub async fn sweep(
+        &self,
+        Parameters(args): Parameters<SweepArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        Ok(tool_result(self.run_sweep(args).await))
+    }
+
+    async fn run_sweep(&self, args: SweepArgs) -> Result<SweepToolResult, Error> {
+        let plan = Plan::from_json(&args.plan.to_string())?;
+        // `json!` builds a JSON value with Rust expressions inside, so the
+        // two fields are parsed together as one `Sweep`.
+        let sweep = Sweep::from_value(serde_json::json!({
+            "parameter": args.parameter,
+            "values": args.values,
+        }))?;
+        let result = run_sweep(Arc::clone(&self.projector), &plan, &sweep).await?;
+        Ok(SweepToolResult {
+            sweep: result,
+            assumptions: Assumptions::from_plan(&plan, Vec::new()),
+        })
     }
 
     async fn compare(&self, args: CompareScenariosArgs) -> Result<ComparisonResult, Error> {
@@ -405,7 +472,7 @@ mod tests {
 
         let mut names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
         names.sort();
-        assert_eq!(names, ["compare_scenarios", "run_projection"]);
+        assert_eq!(names, ["compare_scenarios", "run_projection", "sweep"]);
         for tool in &tools {
             let annotations = tool.annotations.as_ref().expect("annotations");
             assert_eq!(annotations.read_only_hint, Some(true), "{}", tool.name);
@@ -659,6 +726,77 @@ mod tests {
         assert_eq!(
             text_of(&result),
             "scenario problem at `scenarios`: give between 1 and 12 scenarios"
+        );
+    }
+
+    #[tokio::test]
+    async fn sweep_returns_points_breakpoints_and_assumptions() {
+        // Lasts while the withdrawal is at most $55,000.
+        let fake = FakeProjector::from_fn(|plan| {
+            let mut result = projection();
+            if plan.annual_withdrawal_cents <= 5_500_000 {
+                for year in &mut result.totals {
+                    year.unfunded_withdrawal_cents = 0;
+                }
+            }
+            Ok(result)
+        });
+        let client = connect(fake).await;
+        let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
+
+        let result = client
+            .call_tool(
+                CallToolRequestParams::new("sweep").with_arguments(
+                    serde_json::json!({
+                        "plan": plan,
+                        "parameter": "annual_withdrawal",
+                        "values": [5000000, 6000000]
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+
+        assert_ne!(result.is_error, Some(true), "{}", text_of(&result));
+        let body: serde_json::Value = serde_json::from_str(text_of(&result)).unwrap();
+        assert_eq!(body["parameter"], "annual_withdrawal");
+        assert_eq!(body["points"][0]["lastsThroughFinalYear"], true);
+        assert_eq!(body["points"][1]["depletionYear"], 36);
+        assert_eq!(
+            body["breakpoints"],
+            serde_json::json!([{"lastsAt": 5000000, "shortAt": 6000000}])
+        );
+        assert_eq!(body["assumptions"]["drawdownYears"], 30);
+    }
+
+    #[tokio::test]
+    async fn sweep_errors_are_tool_errors() {
+        let client = connect(FakeProjector::scripted(Vec::new())).await;
+        let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
+
+        let result = client
+            .call_tool(
+                CallToolRequestParams::new("sweep").with_arguments(
+                    serde_json::json!({
+                        "plan": plan,
+                        "parameter": "retirement_shift",
+                        "values": [2, 1]
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.is_error, Some(true));
+        assert_eq!(
+            text_of(&result),
+            "sweep problem at `values[1]`: values must be in strictly ascending order"
         );
     }
 }

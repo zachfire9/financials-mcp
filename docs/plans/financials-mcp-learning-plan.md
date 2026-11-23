@@ -396,14 +396,14 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 12 — `sweep` and breakpoint detection
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-12-sweep-breakpoints`
-- **Pull Request:** TBD
+- **Pull Request:** PR_LINK
 - **Concept:** Show where a plan stops working by varying one input across a range.
 - **Rust introduced:** generic helper functions, `impl Iterator`, `windows()` for comparing neighbors.
 - **Functionality:**
   - The `sweep(plan, parameter, values[])` tool, for `annual_withdrawal`, `retirement_shift`, `return_adjustment` and `expense_scale`, with up to 25 values.
-  - Returns the summary series and the **breakpoint**: the first value where the plan no longer lasts through the final year.
+  - Returns a compact series (one point per value) and the **breakpoints**: each neighboring pair of values where the plan goes from lasting through the final year to running short, or back.
 - **Tests (fake projector):**
   - The breakpoint is found in the middle, at the first value, and not at all.
   - Values are checked (non-empty, at most 25, valid for the parameter).

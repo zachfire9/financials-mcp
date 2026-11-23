@@ -47,6 +47,11 @@ pub enum Error {
     #[error("scenario problem at `{location}`: {problem}")]
     ScenarioShape { location: String, problem: String },
 
+    /// A sweep that isn't the right shape, or whose values are out of order,
+    /// too many, or invalid for the parameter or plan.
+    #[error("sweep problem at `{location}`: {problem}")]
+    SweepShape { location: String, problem: String },
+
     /// An override that can't be applied to this plan, or whose result breaks
     /// a plan rule. Names the override by position and `op`. `&'static str`
     /// is a string literal compiled into the program, so no allocation.
@@ -164,7 +169,8 @@ fn friendly_type(expected: &str) -> &str {
         | "struct ExpenseInput"
         | "struct MortgageInput"
         | "internally tagged enum Override"
-        | "struct Scenario" => "an object",
+        | "struct Scenario"
+        | "struct Sweep" => "an object",
         _ => expected,
     }
 }
