@@ -435,7 +435,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-14-withdrawal-order-options`
-- **Pull Request:** PR_LINK
+- **Pull Request:** [#14](https://github.com/zachfire9/financials-mcp/pull/14)
 - **Concept:** Answer "which account first?" by trying the meaningful orderings and comparing them.
 - **Rust introduced:** generating combinations, deduplicating with `HashSet`, reusing existing building blocks (overrides and compare).
 - **Functionality:**
