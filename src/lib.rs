@@ -30,6 +30,7 @@ pub mod projector;
 pub mod server;
 pub mod summary;
 pub mod sweep;
+pub mod withdrawal_order;
 
 // `pub use` re-exports an item so callers can write `financials_mcp::Error`
 // instead of `financials_mcp::error::Error`.
