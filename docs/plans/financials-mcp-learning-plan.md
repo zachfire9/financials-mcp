@@ -451,7 +451,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-15-model-guidance`
-- **Pull Request:** PR_LINK
+- **Pull Request:** [#15](https://github.com/zachfire9/financials-mcp/pull/15)
 - **Concept:** Tool descriptions and server instructions are part of the program: they decide how well the model uses the tools.
 - **Rust introduced:** `const` strings and documentation comments, plus a test that checks the guidance text.
 - **Functionality:**
