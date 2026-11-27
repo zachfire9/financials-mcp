@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  financials-mcp on AWS Lambda: an MCP server (Streamable HTTP, bearer token)
+  for retirement projections through financials-api. Real values are deploy
+  parameters, never in git.
+
+# How the pieces connect:
+#   client --HTTPS--> HTTP API (route ANY /mcp, throttled) --> Lambda (bootstrap)
+#   Lambda --HTTPS--> financials-api POST /projections
+#
+# The API Gateway resources are written out (Api, Integration, Route, Stage,
+# Permission) instead of using the function's `Events`. With `Events`, SAM
+# puts the function's ARN inside the API's definition, so the API depends on
+# the function, and the function couldn't then name the API's host in
+# MCP_ALLOWED_HOSTS without a circular dependency. Written out, the API
+# depends on nothing, and the function and the integration both depend on it.
+
+Parameters:
+  McpBearerToken:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    Description: >-
+      Token MCP clients send as "Authorization: Bearer <token>". At least 32
+      characters; generate one (for example, 32 random bytes as hex). Keep it
+      outside git.
+  FinancialsApiUrl:
+    Type: String
+    AllowedPattern: '^https://[^\s/]+(/[^\s]*)?$'
+    ConstraintDescription: must be an https:// URL
+    Description: >-
+      Base URL of the deployed financials-api (its FinancialsApiUrl stack
+      output), without /projections.
+  FinancialsAccessToken:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: >-
+      financials-api's access token (sent as X-Financials-Access-Token), if it
+      requires one. Leave blank if it doesn't.
+  McpThrottlingRateLimit:
+    Type: Number
+    Default: 2
+    MinValue: 1
+    Description: >-
+      Steady-state requests per second to /mcp before API Gateway returns 429.
+      One tool call is one request. Throttled requests never reach Lambda.
+  McpThrottlingBurstLimit:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    Description: Requests API Gateway accepts in a burst above the steady rate.
+  McpReservedConcurrency:
+    Type: String
+    Default: ''
+    AllowedPattern: '^[0-9]*$'
+    Description: >-
+      Optional cap on concurrent Lambda executions, a cost backstop behind the
+      throttling. Leave blank to skip. AWS rejects it if fewer than 100
+      unreserved executions would be left, so accounts with a low concurrency
+      quota must leave it blank.
+  McpMemorySize:
+    Type: Number
+    Default: 128
+    MinValue: 128
+    MaxValue: 256
+    Description: >-
+      Lambda memory in MB (CPU scales with it). The function mostly waits on
+      financials-api, so 128 is enough.
+
+Conditions:
+  HasReservedConcurrency: !Not [!Equals [!Ref McpReservedConcurrency, '']]
+
+Resources:
+  McpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: financials-mcp MCP server (Rust, lambda_http).
+      # The zip `cargo lambda build ... --output-format zip` writes, holding
+      # one file, `bootstrap`. `sam deploy` uploads it as is: no `sam build`.
+      CodeUri: target/lambda/lambda/bootstrap.zip
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Architectures:
+        - arm64
+      MemorySize: !Ref McpMemorySize
+      # Tool calls stop at 25 seconds (TOOL_TIME_LIMIT). API Gateway gives up
+      # at 30. 29 leaves the server time to answer with its own error.
+      Timeout: 29
+      ReservedConcurrentExecutions: !If
+        - HasReservedConcurrency
+        - !Ref McpReservedConcurrency
+        - !Ref AWS::NoValue
+      Environment:
+        Variables:
+          FINANCIALS_API_URL: !Ref FinancialsApiUrl
+          # Empty means "no token", the same as leaving the variable unset.
+          FINANCIALS_ACCESS_TOKEN: !Ref FinancialsAccessToken
+          MCP_BEARER_TOKEN: !Ref McpBearerToken
+          # The only Host header accepted: this API's own domain.
+          MCP_ALLOWED_HOSTS: !Sub '${McpHttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
+
+  # Created here, rather than by Lambda on first use, so the retention is set
+  # and the logs are deleted with the stack.
+  McpLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${McpFunction}'
+      RetentionInDays: 14
+
+  McpHttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Ref AWS::StackName
+      Description: HTTP API in front of the financials-mcp Lambda.
+      ProtocolType: HTTP
+
+  McpIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref McpHttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt McpFunction.Arn
+      # Payload v2: the event shape lambda_http parses (src/lambda.rs tests).
+      PayloadFormatVersion: '2.0'
+      TimeoutInMillis: 30000
+
+  # Only /mcp reaches Lambda; any other path gets API Gateway's own 404 and
+  # costs no invocation. ANY, not just POST, so the server itself answers GET
+  # and DELETE the way the MCP spec expects (405), instead of a 404 that
+  # clients read as "session expired".
+  McpRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref McpHttpApi
+      RouteKey: ANY /mcp
+      Target: !Sub 'integrations/${McpIntegration}'
+
+  McpStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref McpHttpApi
+      StageName: $default
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingRateLimit: !Ref McpThrottlingRateLimit
+        ThrottlingBurstLimit: !Ref McpThrottlingBurstLimit
+
+  # Lets this API, and only for /mcp, invoke the function.
+  McpInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref McpFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${McpHttpApi}/*/*/mcp'
+
+Outputs:
+  McpUrl:
+    Description: The MCP endpoint to give clients (with the bearer token).
+    Value: !Sub 'https://${McpHttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/mcp'
+  McpLogGroupName:
+    Description: CloudWatch log group with the server's logs.
+    Value: !Ref McpLogGroup

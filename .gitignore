@@ -20,3 +20,9 @@ financials-backup-*.json
 
 # Settings for `cargo lambda watch` (holds MCP_BEARER_TOKEN).
 lambda.env
+
+# SAM: local build output, saved deploy settings (can hold parameter values),
+# and filled-in IAM policies (hold the account id).
+.aws-sam/
+samconfig.toml
+/*.filled.json

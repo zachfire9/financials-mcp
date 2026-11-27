@@ -19,7 +19,7 @@ There are two transports, carrying the same JSON-RPC messages to the same server
 
 - **stdio:** the client starts `financials-mcp serve` as a child process and exchanges messages over its stdin and stdout, one per line. That's why nothing else may ever be printed to stdout while serving, and why logs go to stderr.
 - **Streamable HTTP** (`serve --http`, in [`http.rs`](../src/http.rs)): each message is a `POST /mcp`, answered with JSON. It's stateless: no sessions, and each request is handled by a fresh clone of the server (sharing one projector). rmcp provides the transport as a `tower::Service`, and axum routes requests to it. It's locked: every request needs `Authorization: Bearer <MCP_BEARER_TOKEN>` (checked in constant time by middleware, before the body is read), the `Host` header must be on the allowed list, and bodies are capped at 1 MiB.
-- **AWS Lambda** (the `lambda` binary, in [`lambda.rs`](../src/lambda.rs)): the same router, driven by Lambda events instead of a listening socket. `lambda_http` turns each API Gateway HTTP API event into an `http::Request` and the response back into an event reply, so the tools, token check, allowed hosts and limits are identical. Step 22 deploys it.
+- **AWS Lambda** (the `lambda` binary, in [`lambda.rs`](../src/lambda.rs)): the same router, driven by Lambda events instead of a listening socket. `lambda_http` turns each API Gateway HTTP API event into an `http::Request` and the response back into an event reply, so the tools, token check, allowed hosts and limits are identical. [`template.yaml`](../template.yaml) deploys it behind an API Gateway HTTP API (see [Deployment](#deployment)).
 
 ## Modules
 
@@ -81,6 +81,20 @@ The other batch tools follow the same path with different preparation: `sweep` b
 - **Optional transports are Cargo features.** The HTTP transport (and axum) is the default `http` feature. `cargo build --no-default-features` leaves it out entirely. The Lambda binary is the `lambda` feature, off by default, so only the Lambda build carries `lambda_http`. CI tests all three builds.
 - **One server, three ways in.** stdio, local HTTP and Lambda all run the same `FinancialsServer`. HTTP and Lambda also share the same router and middleware. Lambda-specific code is a few lines: read the settings, build once, `lambda_http::run`.
 
+## Deployment
+
+```text
+Claude (web, phone, Claude Code) --HTTPS, bearer token--> API Gateway HTTP API (ANY /mcp, throttled)
+  --> Lambda: bootstrap (arm64, provided.al2023) --HTTPS, access token--> financials-api POST /projections
+```
+
+- **Everything is in [`template.yaml`](../template.yaml)**: the function, an HTTP API with one route, a throttled `$default` stage, the permission letting that API (only for `/mcp`) invoke the function, and a log group with 14-day retention. Secrets are `NoEcho` parameters, filled from GitHub secrets at deploy time.
+- **The API Gateway resources are written out, not generated from the function's `Events`.** SAM's generated API embeds the function's ARN, so the API depends on the function, and the function couldn't set `MCP_ALLOWED_HOSTS` to the API's domain without a circular dependency. Written out, the API depends on nothing, and the function names its own host.
+- **The route is `ANY /mcp`.** API Gateway answers every other path with its own 404, so they never invoke the function. `GET` and `DELETE` still reach the server, which answers `405` as the MCP spec expects for a stateless server (a gateway 404 would read as "session expired").
+- **No `sam build`.** The template's `CodeUri` is the zip `cargo lambda build` writes. The deploy workflow runs CI as a reusable workflow, downloads the zip CI built and checked, and `sam deploy` uploads it as is. What runs is what was tested.
+- **Credentials are short-lived.** GitHub's OIDC token is exchanged for an hour of AWS credentials for a role that trusts only `main` of this repo and may change only this stack's resources ([`infra/iam/`](../infra/iam/README.md)). The role's IAM permissions cover the function's role, not the deploy role itself, so a deploy can't widen its own access.
+- **Two layers of throttling.** API Gateway limits calls into this server. financials-api's own gateway limits projections, and one tool call can send up to 25. The client retries a `429` from financials-api up to 4 times with growing pauses (`THROTTLE_RETRY_DELAYS` in [`api.rs`](../src/api.rs)), well inside the 25-second tool limit.
+
 ## How an agent uses the tools
 
 The server sends the model [instructions](../src/guidance.rs) when it connects:
@@ -136,13 +150,13 @@ The model never estimated a number: each one came from a tool. It asked about go
 
 ## Testing strategy
 
-Every behavior has a deterministic test, and **no test calls the real financials-api or a model**. There are 220 tests by default (188 without the `http` feature, 226 with the `lambda` feature too):
+Every behavior has a deterministic test, and **no test calls the real financials-api or a model**. There are 223 tests by default (191 without the `http` feature, 229 with the `lambda` feature too):
 
 | Kind | Where | What they cover |
 |---|---|---|
 | Unit tests | `#[cfg(test)] mod tests` in each `src/` file | Parsing and checks, each override, summaries, the search, ranking, error messages, log filters |
 | Fake projector | `FakeProjector` in [`projector.rs`](../src/projector.rs) | Every tool's logic, with scripted or computed projections, plus counting and concurrency fakes in `batch.rs` |
-| Mock HTTP server | [`wiremock`](https://crates.io/crates/wiremock) in [`api.rs`](../src/api.rs) and the logging test | The real HTTP client: status codes, timeouts, redirects, size caps, the token header, and that the token never reaches logs |
+| Mock HTTP server | [`wiremock`](https://crates.io/crates/wiremock) in [`api.rs`](../src/api.rs) and the logging test | The real HTTP client: status codes, `429` retries, timeouts, redirects, size caps, the token header, and that the token never reaches logs |
 | In-process MCP client | `server.rs` tests, over `tokio::io::duplex` **and** over HTTP on a local port | Tool listing, schemas, annotations, results and tool errors, through rmcp exactly as a client sees them. A `macro_rules!` macro runs each test once per transport |
 | HTTP transport | `http.rs` tests | The bearer token (missing, malformed, wrong, a prefix, one character too many, a case-insensitive scheme), startup without a token, the `Host` allow list, the 1 MiB limit, stateless requests, graceful shutdown with a call in progress, and logs without the token |
 | Lambda events | `lambda.rs` tests | API Gateway HTTP API (v2) event JSON parsed by `lambda_http`, through the router: tools answer, a tool call reaches a mock financials-api, no token gets `401`, a large body gets `413`, the wrong host gets `403`, no token fails startup |
@@ -162,3 +176,6 @@ CI runs on every push and pull request, and weekly:
 - `cargo fmt --check`, `cargo clippy -- -D warnings` and `cargo test` on Linux and Windows, with default features, none and all
 - `cargo deny check` for dependency advisories, licenses and sources, across all features
 - the arm64 Lambda build with cargo-lambda (installed from hash-pinned wheels), checking the binary's architecture and that it needs no newer glibc than Lambda's runtime
+- `sam validate --lint` on `template.yaml`
+
+The [Deploy workflow](../.github/workflows/deploy.yml), run by hand, runs all of CI and then deploys, finishing with a smoke test against the live endpoint: `401` without the token, five tools with it.
