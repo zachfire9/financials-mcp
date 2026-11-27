@@ -42,12 +42,26 @@ pub enum Command {
         /// Path to a plan JSON file (the POST /projections request body).
         plan: PathBuf,
     },
-    /// Start the MCP server on stdin/stdout, for an MCP client to launch.
+    /// Start the MCP server: on stdin/stdout for an MCP client to launch, or
+    /// over HTTP with --http.
     ///
     /// Reads FINANCIALS_API_URL and FINANCIALS_ACCESS_TOKEN from the
     /// environment or a local .env file. Logs go to stderr; set
     /// FINANCIALS_MCP_LOG to error, warn, info (default), debug, trace or off.
-    Serve,
+    Serve {
+        // `#[cfg(feature = "http")]` on a field removes it from the program
+        // when the feature is off, so `--http` doesn't exist in that build.
+        /// Serve MCP over HTTP at http://<listen>/mcp instead of stdio.
+        #[cfg(feature = "http")]
+        #[arg(long)]
+        http: bool,
+
+        /// The address to listen on with --http. The default accepts
+        /// connections from this machine only.
+        #[cfg(feature = "http")]
+        #[arg(long, value_name = "ADDRESS", default_value = crate::http::DEFAULT_LISTEN, requires = "http")]
+        listen: std::net::SocketAddr,
+    },
 }
 
 /// Runs the `project` command: load, check, project, summarize, print.
@@ -129,9 +143,53 @@ mod tests {
     }
 
     #[test]
-    fn serve_takes_no_arguments() {
+    fn serve_needs_no_arguments() {
         let cli = Cli::try_parse_from(["financials-mcp", "serve"]).unwrap();
-        assert_eq!(cli.command, Some(Command::Serve));
+        // `{ .. }` matches the variant whatever fields it has: none without
+        // the `http` feature, `http` and `listen` with it.
+        assert!(matches!(cli.command, Some(Command::Serve { .. })));
+    }
+
+    // These tests only exist in builds with the `http` feature.
+    #[cfg(feature = "http")]
+    #[test]
+    fn serve_defaults_to_stdio_and_loopback() {
+        let cli = Cli::try_parse_from(["financials-mcp", "serve"]).unwrap();
+        assert_eq!(
+            cli.command,
+            Some(Command::Serve {
+                http: false,
+                listen: crate::http::DEFAULT_LISTEN.parse().unwrap(),
+            })
+        );
+    }
+
+    #[cfg(feature = "http")]
+    #[test]
+    fn serve_http_takes_a_listen_address() {
+        let cli = Cli::try_parse_from([
+            "financials-mcp",
+            "serve",
+            "--http",
+            "--listen",
+            "127.0.0.1:9000",
+        ])
+        .unwrap();
+        assert_eq!(
+            cli.command,
+            Some(Command::Serve {
+                http: true,
+                listen: "127.0.0.1:9000".parse().unwrap(),
+            })
+        );
+
+        // `--listen` without `--http` is a mistake, and so is a bad address.
+        let without_http =
+            Cli::try_parse_from(["financials-mcp", "serve", "--listen", "127.0.0.1:9000"]);
+        assert!(without_http.is_err());
+        let bad_address =
+            Cli::try_parse_from(["financials-mcp", "serve", "--http", "--listen", "localhost"]);
+        assert!(bad_address.is_err());
     }
 
     #[test]

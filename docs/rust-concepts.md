@@ -25,6 +25,7 @@ Topics:
 | `Cargo.toml` versions are ranges, `Cargo.lock` is exact | [`Cargo.toml`](../Cargo.toml), [`Cargo.lock`](../Cargo.lock) (Step 17) | `go.mod` plus `go.sum`; a fully pinned `requirements.txt` |
 | `rust-version` and the version-aware resolver | `Cargo.toml` (Step 9: Cargo picked rmcp 2.2 for Rust 1.85) | Go's `go` directive; no direct Python equivalent |
 | Features (optional parts of a crate) | `tracing-subscriber` with `default-features = false` ([`Cargo.toml`](../Cargo.toml)) | Go build tags, roughly; pip "extras" |
+| Your own features and `#[cfg(feature = "…")]` | The `http` feature in [`Cargo.toml`](../Cargo.toml); `#[cfg(feature = "http")] pub mod http;` in [`lib.rs`](../src/lib.rs), and on CLI fields and match arms (Step 19) | Go build tags (`//go:build`); a feature flag, but decided at compile time |
 | Several major versions of one crate at once | `syn` 2 and 3 in the tree (Step 17) | Go allows one version per module |
 | Build scripts and proc macros run at compile time | `aws-lc-sys` (`build.rs`), `serde_derive` | `go generate`, but automatic |
 
@@ -49,6 +50,7 @@ Topics:
 | Concept | Where | Compared with Go / Python |
 |---|---|---|
 | Structs and `#[derive(Debug, Clone, PartialEq)]` | `Plan` ([`plan.rs`](../src/plan.rs), Step 2) | Go structs; Python dataclasses |
+| `#[non_exhaustive]`: built with `Default` and builder methods | `StreamableHttpServerConfig` in `http::config` ([`http.rs`](../src/http.rs), Step 19) | Keyword-only arguments with defaults |
 | Tuple structs and the newtype pattern | `AccessToken(String)` ([`config.rs`](../src/config.rs), Step 4) | `type AccessToken string`, but with behavior the compiler enforces |
 | Type aliases | `type Order = Vec<u8>` ([`withdrawal_order.rs`](../src/withdrawal_order.rs)) | Go's `type X = Y` (with `=`) |
 | `Option<T>` instead of nil | `withdrawal_available_after_year: Option<i32>` (Step 2): `None` means "default", `Some(0)` means "year 1" | `*int` in Go; `Optional[int]` in Python, unchecked |
@@ -79,6 +81,7 @@ Topics:
 |---|---|---|
 | Traits, implemented explicitly | `impl Projector for ApiProjector` ([`api.rs`](../src/api.rs)) | Go interfaces are satisfied implicitly; Python protocols |
 | Implementing a standard trait by hand | `impl fmt::Debug for AccessToken` ([`config.rs`](../src/config.rs)) | Implementing `String()` or `__repr__` |
+| `tower::Service`: request in, future of a response out | rmcp's `StreamableHttpService`, routed by axum ([`http.rs`](../src/http.rs), Step 19) | Go's `http.Handler`; a WSGI/ASGI app |
 | `-> impl Future + Send` in a trait | `Projector::project` ([`projector.rs`](../src/projector.rs), Step 6) | No equivalent |
 | Generics, specialized per type at compile time | `project_all<P: Projector>` ([`batch.rs`](../src/batch.rs)), every tool | Go generics (usually one shared copy); Python type hints (not checked) |
 | Trait objects (`Box<dyn Fn …>`) for runtime choice | `ProjectionFn` in [`projector.rs`](../src/projector.rs) | A Go interface value |
@@ -107,6 +110,7 @@ Topics:
 | The tokio runtime, `#[tokio::main]` | [`main.rs`](../src/main.rs) (`current_thread`) | `asyncio.run`; the Go runtime |
 | `tokio::spawn`, `JoinSet` | `project_all` ([`batch.rs`](../src/batch.rs), Step 11) | Goroutines with an `errgroup`; `asyncio.as_completed` |
 | `Semaphore` for a concurrency limit | `project_all` (4 at a time) | A buffered channel; `asyncio.Semaphore` |
+| Graceful shutdown with any future | `http::serve(…, shutdown: impl Future)`; Ctrl+C via `tokio::signal::ctrl_c`, `std::future::pending` in tests ([`http.rs`](../src/http.rs)) | `http.Server.Shutdown(ctx)`; a cancelled `asyncio` task |
 | `Arc` for shared ownership | The projector shared across tasks and connections | Automatic with a GC |
 | `Mutex` and atomics for shared state | `FakeProjector::received`, `Counted::count` | `sync.Mutex`, `atomic`; `threading.Lock` |
 | `Send` and `Sync` | `trait Projector: Send + Sync`; the `+ Send` bounds in `FinancialsServer::call` | Checked by Go's race detector at runtime, if at all |
@@ -120,6 +124,7 @@ Topics:
 | Function-like macros (`!`) | `format!`, `env!`, `matches!`, `include_str!` | `fmt.Sprintf`, `//go:embed` |
 | `env!` expands where it's written | `get_info` ([`server.rs`](../src/server.rs), Step 9) | `ldflags -X` |
 | `concat!` for compile-time strings | `INSTRUCTIONS` ([`guidance.rs`](../src/guidance.rs), Step 15) | Constant string concatenation |
+| `macro_rules!`: your own macros | `on_every_transport!` in the [`server.rs`](../src/server.rs) tests: one test body, a test per transport (Step 19) | Table-driven tests or `pytest.mark.parametrize`, but generating real functions |
 | `#[derive]` generates trait code | `Serialize`, `Deserialize`, `JsonSchema`, `Parser` | `encoding/json` reflection; dataclasses |
 | serde attributes | `rename_all`, `default`, `skip_serializing_if`, `deny_unknown_fields`, `tag = "op"`, `untagged`, `flatten` | Go struct tags |
 | Attribute macros that build code | `#[tool_router]`, `#[tool]`, `#[tool_handler]` ([`server.rs`](../src/server.rs)); `#[tokio::main]` | Python decorators, but at compile time |
@@ -147,4 +152,5 @@ Topics:
 | A mock HTTP server | wiremock in [`api.rs`](../src/api.rs) | `httptest`; `responses` |
 | In-memory pipes for protocol tests | `tokio::io::duplex` in [`server.rs`](../src/server.rs) | `net.Pipe` |
 | Capturing logs | `logging::capture` ([`logging.rs`](../src/logging.rs)) | `caplog` |
+| `thread_local!`, `RefCell` and `Once` | `logging::capture` routes one global subscriber's lines to each test's buffer ([`logging.rs`](../src/logging.rs), Step 19) | `threading.local()`; `sync.Once` |
 | `include_str!` for fixtures | `const PLAN: &str = include_str!(…)` | `//go:embed` |

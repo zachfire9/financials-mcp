@@ -34,6 +34,10 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
+      # The same without optional features (no HTTP transport), so the
+      # smaller build keeps compiling and passing.
+      - run: cargo clippy --all-targets --locked --no-default-features -- -D warnings
+      - run: cargo test --locked --no-default-features
 
   # Dependency policy (deny.toml): advisories, licenses, banned crates and
   # sources. Linux only: the check covers every platform's dependencies.

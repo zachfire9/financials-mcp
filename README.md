@@ -18,7 +18,7 @@ This is also a **learning project**, built one reviewable step at a time as a fi
 
 ## Status
 
-Steps 1–18 are complete: five tools over stdio, for Claude Desktop and Claude Code.
+Steps 1–19 are complete: five tools over stdio for Claude Desktop and Claude Code, and over HTTP on this machine (`serve --http`).
 
 | Tool | Answers |
 |---|---|
@@ -28,7 +28,7 @@ Steps 1–18 are complete: five tools over stdio, for Claude Desktop and Claude 
 | `find_max_spending` | "What's the most we can spend and still have $200k left?" |
 | `withdrawal_order_options` | "Which account should we draw from first?" |
 
-**Next:** Steps 19–22 serve the same tools over HTTP from AWS Lambda, so Claude can use them from any device. See the [plan](docs/plans/financials-mcp-learning-plan.md#step-19--streamable-http-transport-locally).
+**Next:** Steps 20–22 add a bearer token and limits, then host the HTTP server on AWS Lambda, so Claude can use the tools from any device. See the [plan](docs/plans/financials-mcp-learning-plan.md#step-20--bearer-token-auth-and-request-limits).
 
 ## Requirements
 
@@ -99,6 +99,18 @@ claude mcp add --transport stdio --env FINANCIALS_API_URL=http://localhost:8080 
 
 Add `--scope user` to make it available in every project (the default scope is the current project only).
 
+### Over HTTP, on this machine
+
+`financials-mcp serve --http` serves the same tools at `http://127.0.0.1:8787/mcp` using MCP's Streamable HTTP transport, in stateless mode (no sessions; each request stands alone). Start it yourself, with settings in the environment or a `.env` in the folder you run it from:
+
+```powershell
+$env:FINANCIALS_API_URL="http://localhost:8080"
+.\target\release\financials-mcp.exe serve --http                         # or --listen 127.0.0.1:9000
+claude mcp add --transport http financials-http http://127.0.0.1:8787/mcp
+```
+
+It accepts requests addressed to `localhost`, `127.0.0.1` or `::1` only (other `Host` headers get `403`, which blocks DNS-rebinding attacks from web pages), and there's no authentication yet, so keep it on loopback. Step 20 adds a bearer token before it's ever hosted. Ctrl+C stops it after requests in progress finish.
+
 Then attach or paste a plan (the financials-api `POST /projections` request body) and ask, for example:
 
 - *"Run a projection for this plan and tell me whether the money lasts."*
@@ -128,12 +140,13 @@ The model is told to ask what you're optimizing for, to use the tools for every 
 ```powershell
 cargo run                                   # build and run the binary (prints a banner)
 cargo test                                  # unit + integration tests
+cargo test --no-default-features            # the same, built without the HTTP transport
 cargo fmt --check                           # formatting
 cargo clippy --all-targets -- -D warnings   # lints, warnings fail
 cargo deny check                            # dependency policy (deny.toml)
 ```
 
-CI runs fmt, clippy and the tests on every push and pull request, on Linux and Windows, plus `cargo deny check` on Linux. It also runs weekly, so a newly published advisory shows up even when nothing changed. Install cargo-deny with `cargo install cargo-deny --locked`.
+CI runs fmt, clippy and the tests on every push and pull request, on Linux and Windows, with and without default features, plus `cargo deny check` on Linux. It also runs weekly, so a newly published advisory shows up even when nothing changed. Install cargo-deny with `cargo install cargo-deny --locked`.
 
 ## Dependencies
 
@@ -155,6 +168,7 @@ financials-mcp/
     lib.rs              # the library crate root; lists the modules
     server.rs           # the MCP server: five tools, results, errors as tool results
     guidance.rs         # instructions sent to the model
+    http.rs             # `serve --http`: the Streamable HTTP transport (the `http` feature)
     logging.rs          # stderr logging, a projection counter, no plan contents
     plan.rs             # the plan (API request) types, parsing and pre-checks
     overrides.rs        # "what if" changes applied to a copy of a plan
@@ -172,7 +186,7 @@ financials-mcp/
     cli.rs              # the `project` debug command
   tests/
     cli.rs              # runs the built binary: banner, help, project command
-    serve.rs            # runs `serve` and speaks raw MCP over stdio
+    serve.rs            # runs `serve`: raw MCP over stdio, and over HTTP with --http
     docs.rs             # checks the docs' links and that they match the app
     plan_fixtures.rs    # the fixture plans load and pass the checks
     summary_fixtures.rs # the fixture responses summarize as expected

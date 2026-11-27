@@ -613,9 +613,85 @@ mod tests {
             .expect("text content")
     }
 
-    #[tokio::test]
-    async fn initialize_reports_name_version_and_instructions() {
-        let client = connect(FakeProjector::scripted(Vec::new())).await;
+    /// How a test reaches the server: in-process over stdio-style pipes, or
+    /// over real HTTP on a local port.
+    #[derive(Debug, Clone, Copy)]
+    enum Transport {
+        Stdio,
+        #[cfg(feature = "http")]
+        Http,
+    }
+
+    /// Connects an MCP client to a server using `projector`, over `transport`.
+    async fn connect_via<T: Projector + 'static>(
+        transport: Transport,
+        projector: T,
+    ) -> RunningService<RoleClient, ()> {
+        match transport {
+            Transport::Stdio => connect(projector).await,
+            #[cfg(feature = "http")]
+            Transport::Http => {
+                let listener = crate::http::bind("127.0.0.1:0".parse().unwrap())
+                    .await
+                    .unwrap();
+                let url = format!(
+                    "http://{}{}",
+                    listener.local_addr().unwrap(),
+                    crate::http::MCP_PATH
+                );
+                // Runs until the test's runtime shuts down at the end of the
+                // test: `pending()` is a shutdown signal that never comes.
+                tokio::spawn(crate::http::serve(
+                    FinancialsServer::new(projector),
+                    listener,
+                    std::future::pending(),
+                ));
+                ().serve(rmcp::transport::StreamableHttpClientTransport::from_uri(
+                    url,
+                ))
+                .await
+                .unwrap()
+            }
+        }
+    }
+
+    /// Turns each test into one test per transport, so every tool behaves
+    /// the same over stdio and HTTP.
+    ///
+    /// `macro_rules!` matches the code it's given against a pattern and
+    /// writes new code from it, at compile time. Here,
+    /// `async fn name(transport) { body }` becomes a module `name` holding
+    /// `async fn run(transport: Transport) { body }` plus two `#[tokio::test]`
+    /// functions, `stdio` and `http`, that call it. Test names come out as
+    /// `server::tests::lists_read_only_tools_with_the_plan_schema::http`.
+    /// `$name:ident` captures an identifier, `$body:block` a `{ ... }` block,
+    /// and `$( ... )*` repeats for each test.
+    macro_rules! on_every_transport {
+        ($(async fn $name:ident($transport:ident) $body:block)*) => {
+            $(
+                mod $name {
+                    use super::*;
+
+                    async fn run($transport: Transport) $body
+
+                    #[tokio::test]
+                    async fn stdio() {
+                        run(Transport::Stdio).await
+                    }
+
+                    #[cfg(feature = "http")]
+                    #[tokio::test]
+                    async fn http() {
+                        run(Transport::Http).await
+                    }
+                }
+            )*
+        };
+    }
+
+    on_every_transport! {
+    async fn initialize_reports_name_version_and_instructions(transport) {
+        let client = connect_via(transport, FakeProjector::scripted(Vec::new())).await;
         let info = client.peer_info().expect("server info after initialize");
 
         // `server_info` is optional in the protocol, so it's an `Option`;
@@ -626,9 +702,8 @@ mod tests {
         assert_eq!(info.instructions.as_deref(), Some(INSTRUCTIONS));
     }
 
-    #[tokio::test]
-    async fn every_tool_has_a_model_facing_description_and_read_only_hints() {
-        let client = connect(FakeProjector::scripted(Vec::new())).await;
+    async fn every_tool_has_a_model_facing_description_and_read_only_hints(transport) {
+        let client = connect_via(transport, FakeProjector::scripted(Vec::new())).await;
         let tools = client.list_all_tools().await.unwrap();
         assert_eq!(tools.len(), 5);
 
@@ -655,9 +730,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn lists_read_only_tools_with_the_plan_schema() {
-        let client = connect(FakeProjector::scripted(Vec::new())).await;
+    async fn lists_read_only_tools_with_the_plan_schema(transport) {
+        let client = connect_via(transport, FakeProjector::scripted(Vec::new())).await;
 
         let tools = client.list_all_tools().await.unwrap();
 
@@ -715,10 +789,9 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn run_projection_returns_the_summary_and_assumptions() {
+    async fn run_projection_returns_the_summary_and_assumptions(transport) {
         let fake = FakeProjector::scripted(vec![Ok(projection())]);
-        let client = connect(fake).await;
+        let client = connect_via(transport, fake).await;
 
         let result = call(&client, PLAN).await;
 
@@ -737,9 +810,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn an_invalid_plan_is_a_tool_error_the_model_can_read() {
-        let client = connect(FakeProjector::scripted(Vec::new())).await;
+    async fn an_invalid_plan_is_a_tool_error_the_model_can_read(transport) {
+        let client = connect_via(transport, FakeProjector::scripted(Vec::new())).await;
 
         let result = call(&client, r#"{"years": 99, "items": []}"#).await;
 
@@ -750,9 +822,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn a_wrongly_typed_plan_is_a_tool_error_without_the_value() {
-        let client = connect(FakeProjector::scripted(Vec::new())).await;
+    async fn a_wrongly_typed_plan_is_a_tool_error_without_the_value(transport) {
+        let client = connect_via(transport, FakeProjector::scripted(Vec::new())).await;
         let wrong = PLAN.replacen("25000000", "250000.75", 1);
 
         let result = call(&client, &wrong).await;
@@ -766,9 +837,8 @@ mod tests {
         assert!(!text_of(&result).contains("250000"), "{}", text_of(&result));
     }
 
-    #[tokio::test]
-    async fn api_failures_are_tool_errors_too() {
-        let client = connect(FakeProjector::scripted(vec![Err(Error::Auth)])).await;
+    async fn api_failures_are_tool_errors_too(transport) {
+        let client = connect_via(transport, FakeProjector::scripted(vec![Err(Error::Auth)])).await;
 
         let result = call(&client, PLAN).await;
 
@@ -780,8 +850,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn overrides_change_the_plan_that_is_projected() {
+    async fn overrides_change_the_plan_that_is_projected(transport) {
         // The server takes ownership of the fake, so the test keeps its own
         // handle to a shared list: `Arc` (shared ownership) around a `Mutex`
         // (one writer at a time). The `move` closure owns one clone of the
@@ -792,7 +861,7 @@ mod tests {
             recorder.lock().unwrap().push(plan.clone());
             Ok(projection())
         });
-        let client = connect(fake).await;
+        let client = connect_via(transport, fake).await;
         let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
 
         let result = call_with(
@@ -827,17 +896,15 @@ mod tests {
         assert_eq!(assumptions["overrides"][1]["basisPoints"], -100);
     }
 
-    #[tokio::test]
-    async fn without_overrides_none_are_echoed() {
-        let client = connect(FakeProjector::scripted(vec![Ok(projection())])).await;
+    async fn without_overrides_none_are_echoed(transport) {
+        let client = connect_via(transport, FakeProjector::scripted(vec![Ok(projection())])).await;
         let result = call(&client, PLAN).await;
         let body: serde_json::Value = serde_json::from_str(text_of(&result)).unwrap();
         assert!(body["assumptions"].get("overrides").is_none());
     }
 
-    #[tokio::test]
-    async fn a_bad_override_is_a_tool_error_naming_it() {
-        let client = connect(FakeProjector::scripted(Vec::new())).await;
+    async fn a_bad_override_is_a_tool_error_naming_it(transport) {
+        let client = connect_via(transport, FakeProjector::scripted(Vec::new())).await;
         let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
 
         let result = call_with(
@@ -867,10 +934,9 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn compare_scenarios_returns_the_baseline_and_rows() {
+    async fn compare_scenarios_returns_the_baseline_and_rows(transport) {
         let fake = FakeProjector::from_fn(|_| Ok(projection()));
-        let client = connect(fake).await;
+        let client = connect_via(transport, fake).await;
         let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
 
         let result = client
@@ -905,9 +971,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn compare_scenarios_rejects_a_bad_scenario_list() {
-        let client = connect(FakeProjector::scripted(Vec::new())).await;
+    async fn compare_scenarios_rejects_a_bad_scenario_list(transport) {
+        let client = connect_via(transport, FakeProjector::scripted(Vec::new())).await;
         let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
 
         let result = client
@@ -929,8 +994,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn sweep_returns_points_breakpoints_and_assumptions() {
+    async fn sweep_returns_points_breakpoints_and_assumptions(transport) {
         // Lasts while the withdrawal is at most $55,000.
         let fake = FakeProjector::from_fn(|plan| {
             let mut result = projection();
@@ -941,7 +1005,7 @@ mod tests {
             }
             Ok(result)
         });
-        let client = connect(fake).await;
+        let client = connect_via(transport, fake).await;
         let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
 
         let result = client
@@ -972,9 +1036,8 @@ mod tests {
         assert_eq!(body["assumptions"]["drawdownYears"], 30);
     }
 
-    #[tokio::test]
-    async fn sweep_errors_are_tool_errors() {
-        let client = connect(FakeProjector::scripted(Vec::new())).await;
+    async fn sweep_errors_are_tool_errors(transport) {
+        let client = connect_via(transport, FakeProjector::scripted(Vec::new())).await;
         let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
 
         let result = client
@@ -1000,8 +1063,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn find_max_spending_returns_the_amount_and_summary() {
+    async fn find_max_spending_returns_the_amount_and_summary(transport) {
         // Every year funded while the withdrawal is at most $55,000.
         let fake = FakeProjector::from_fn(|plan| {
             let mut result = projection();
@@ -1012,7 +1074,7 @@ mod tests {
             }
             Ok(result)
         });
-        let client = connect(fake).await;
+        let client = connect_via(transport, fake).await;
         let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
 
         let result = client
@@ -1038,9 +1100,8 @@ mod tests {
         assert!(body["projectionsUsed"].as_u64().unwrap() <= 25);
     }
 
-    #[tokio::test]
-    async fn find_max_spending_bad_constraints_are_tool_errors() {
-        let client = connect(FakeProjector::scripted(Vec::new())).await;
+    async fn find_max_spending_bad_constraints_are_tool_errors(transport) {
+        let client = connect_via(transport, FakeProjector::scripted(Vec::new())).await;
         let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
 
         let result = client
@@ -1062,9 +1123,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn withdrawal_order_options_ranks_the_orders() {
-        let client = connect(FakeProjector::from_fn(|_| Ok(projection()))).await;
+    async fn withdrawal_order_options_ranks_the_orders(transport) {
+        let client = connect_via(transport, FakeProjector::from_fn(|_| Ok(projection()))).await;
         let plan: serde_json::Value = serde_json::from_str(PLAN).unwrap();
 
         let result = client
@@ -1094,6 +1154,7 @@ mod tests {
         assert_eq!(options[0]["headline"]["depletionYear"], 36);
         assert_eq!(options[0]["priorities"][2]["itemId"], "item-brokerage");
         assert_eq!(body["assumptions"]["drawdownYears"], 30);
+    }
     }
 
     /// Calls any tool with the given arguments object.

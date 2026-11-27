@@ -184,3 +184,90 @@ fn serve_one_failing_call(log_level: &str) -> String {
     }
     stderr
 }
+
+/// `serve --http` with the real binary: it picks a free port (`:0`), says
+/// which in its startup log line, and answers MCP over HTTP. Only built with
+/// the `http` feature.
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn serve_http_answers_mcp_over_http_and_logs_to_stderr() {
+    use std::sync::{Arc, Mutex};
+
+    let workdir = tempfile::tempdir().unwrap();
+    let mut child = Command::new(BINARY)
+        .args(["serve", "--http", "--listen", "127.0.0.1:0"])
+        .current_dir(workdir.path())
+        // Nothing listens on port 9, so a projection fails fast as `api`.
+        .env("FINANCIALS_API_URL", "http://127.0.0.1:9")
+        .env_remove("FINANCIALS_ACCESS_TOKEN")
+        .env_remove("FINANCIALS_MCP_LOG")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("serve --http should start");
+
+    // Read stderr on its own thread, so the pipe never fills up, and find
+    // the startup line with the address it chose.
+    let stderr = BufReader::new(child.stderr.take().unwrap());
+    let log = Arc::new(Mutex::new(String::new()));
+    let (address_tx, address_rx) = std::sync::mpsc::channel();
+    let reader_log = Arc::clone(&log);
+    std::thread::spawn(move || {
+        for line in stderr.lines().map_while(Result::ok) {
+            if let Some((_, address)) = line.split_once("address=") {
+                let _ = address_tx.send(address.trim().to_string());
+            }
+            reader_log.lock().unwrap().push_str(&line);
+            reader_log.lock().unwrap().push('\n');
+        }
+    });
+    let address = address_rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("a startup line with the listen address");
+    let url = format!("http://{address}/mcp");
+
+    let post = |body: String| {
+        reqwest::Client::new()
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json, text/event-stream")
+            .body(body)
+            .send()
+    };
+    let initialize = post(
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}"#
+            .to_string(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(initialize.status(), 200);
+    let info: serde_json::Value = initialize.json().await.unwrap();
+    assert_eq!(info["result"]["serverInfo"]["name"], "financials-mcp");
+
+    let plan: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/plan-household.json")).unwrap();
+    let call = serde_json::json!({
+        "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+        "params": {"name": "run_projection", "arguments": {"plan": plan}}
+    });
+    let response: serde_json::Value = post(call.to_string()).await.unwrap().json().await.unwrap();
+    assert_eq!(response["result"]["isError"], true, "{response}");
+
+    child.kill().unwrap();
+    child.wait().unwrap();
+    let mut stdout = String::new();
+    std::io::Read::read_to_string(&mut child.stdout.take().unwrap(), &mut stdout).unwrap();
+    assert!(stdout.is_empty(), "nothing goes to stdout: {stdout}");
+
+    let log = log.lock().unwrap().clone();
+    assert!(log.contains("serving MCP over HTTP at /mcp"), "{log}");
+    assert!(log.contains(r#"tool_call{tool="run_projection"}"#), "{log}");
+    assert!(log.contains(r#"error="api""#), "{log}");
+    for private in ["Person A", "Example", "person-a", "30000000"] {
+        assert!(
+            !log.contains(private),
+            "stderr contains {private:?}:\n{log}"
+        );
+    }
+}
