@@ -574,7 +574,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-22-deploy-and-connect`
-- **Pull Request:** PR_LINK
+- **Pull Request:** [#24](https://github.com/zachfire9/financials-mcp/pull/24)
 - **Concept:** Infrastructure as code, mirroring financials-api. A SAM template describes the function and its API, a GitHub Actions workflow deploys it with short-lived OIDC credentials (no stored AWS keys), and Claude connects to the resulting URL.
 - **Rust introduced:** little new Rust; how a release build gets from `cargo lambda build` into a SAM deployment in CI.
 - **Functionality:**

@@ -336,7 +336,7 @@ To follow along, read each step's files in order. Explanations of Rust concepts 
 
 ### Step 22: Deploy with SAM and GitHub OIDC, then connect Claude
 
-PR_LINK
+[PR #24](https://github.com/zachfire9/financials-mcp/pull/24)
 
 - **Built:** the deployment, as code.
   - [`template.yaml`](../template.yaml) describes the arm64 function, an HTTP API with a throttled `ANY /mcp` route, a 14-day log group and optional reserved concurrency.
