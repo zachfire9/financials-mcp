@@ -507,11 +507,11 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 19 — Streamable HTTP transport, locally
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-19-streamable-http`
-- **Pull Request:** TBD
+- **Pull Request:** [#21](https://github.com/zachfire9/financials-mcp/pull/21)
 - **Concept:** The same server over a second transport. MCP over HTTP lets clients that can't start a local process (Claude on the web and on a phone) reach the tools. Stateless mode suits Lambda, where any request may land on a fresh instance.
-- **Rust introduced:** Cargo features (an `http` feature, on by default, and `#[cfg(feature = "http")]`), `tower::Service` (the request-to-response abstraction that rmcp, axum and Lambda share), axum routing, graceful shutdown with `tokio::signal`, and the multi-threaded runtime.
+- **Rust introduced:** Cargo features (an `http` feature, on by default, and `#[cfg(feature = "http")]`), `tower::Service` (the request-to-response abstraction that rmcp, axum and Lambda share), axum routing, graceful shutdown with `tokio::signal`, `#[non_exhaustive]` config structs, and `macro_rules!` for running tests over both transports. (The multi-threaded runtime turned out not to be needed: requests mostly wait on the network, so the single-threaded runtime serves them concurrently.)
 - **Functionality:**
   - `financials-mcp serve --http [--listen 127.0.0.1:8787]` serves the same five tools at `/mcp` with rmcp's Streamable HTTP server transport (`transport-streamable-http-server`), in stateless mode (`legacy_session_mode: false`, JSON responses).
   - Listens on loopback by default. rmcp's `Host` header check (protection against DNS rebinding) stays on, allowing loopback only for now; Step 20 makes the list configurable.
@@ -522,6 +522,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
   - Stateless: independent requests from separate clients work without a session id.
   - A request with a `Host` header that isn't allowed is rejected.
   - The crate still builds and passes tests without the `http` feature (`cargo test --no-default-features` in CI).
+  - Also fixed: the Step 16 log-capture test was flaky when run alongside other tests (per-thread subscribers race with `tracing`'s global cache); capture now routes one global subscriber's output to each test's buffer.
 - **Verification:**
   - `cargo test`
   - Manual: `claude mcp add --transport http financials-http http://127.0.0.1:8787/mcp`, then run a comparison.

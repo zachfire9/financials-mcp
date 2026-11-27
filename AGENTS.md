@@ -14,6 +14,7 @@ It is also a **learning project**: each step on the plan teaches one Rust or MCP
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test                    # run before every commit
+cargo test --no-default-features   # without the HTTP transport (CI runs both)
 cargo deny check              # dependency policy; run after changing dependencies
 cargo run
 ```

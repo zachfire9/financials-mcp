@@ -20,7 +20,9 @@
 //! - [`projection`]: the API's answer; [`summary`]: the compact version tools
 //!   return.
 //! - [`error`]: every failure, with messages that never quote plan values;
-//!   [`cli`]: the `project` debug command.
+//!   [`cli`]: the command line, including the `project` debug command.
+//! - `http`: the Streamable HTTP transport for `serve --http` (with the
+//!   default `http` feature).
 
 // `pub mod plan;` declares a module and tells the compiler to load it from
 // `src/plan.rs`. Unlike Go (every file in a folder is one package) or Python
@@ -34,6 +36,10 @@ pub mod compare;
 pub mod config;
 pub mod error;
 pub mod guidance;
+// Compiled only when the `http` feature is on (the default). Without it, the
+// module, axum and rmcp's HTTP transport aren't built at all.
+#[cfg(feature = "http")]
+pub mod http;
 pub mod logging;
 pub mod max_spending;
 pub mod overrides;

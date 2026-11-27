@@ -1,6 +1,6 @@
 # Walkthrough
 
-financials-mcp was built in 18 steps, one pull request each, as a first Rust codebase. This page walks through them in order:
+financials-mcp is being built one step per pull request, as a first Rust codebase: Steps 1–18 built the local server, and Steps 19–22 take it online. This page walks through them in order:
 - **Built:** what the step added.
 - **Look at:** where to look in today's code.
 - **Rust:** which concepts it introduced (with links into the [Rust concepts index](rust-concepts.md)).
@@ -32,6 +32,8 @@ To follow along, read each step's files in order. Explanations of Rust concepts 
   [logging](#step-16-logging-without-plan-contents) ·
   [dependencies](#step-17-dependency-checks) ·
   [docs](#step-18-learning-walkthrough)
+- **Going online (19–22):**
+  [HTTP transport](#step-19-streamable-http-transport)
 
 ---
 
@@ -277,6 +279,22 @@ To follow along, read each step's files in order. Explanations of Rust concepts 
 - **Look at:** [`docs/`](.), [`tests/docs.rs`](../tests/docs.rs).
 - **Lesson:** checking `--help` found the same leak as Step 15. A Rust note was printed in the program's help text, and now a test checks for that too.
 
+## Going online
+
+### Step 19: Streamable HTTP transport
+
+[PR #21](https://github.com/zachfire9/financials-mcp/pull/21)
+
+- **Built:** `financials-mcp serve --http`, the same five tools at `http://127.0.0.1:8787/mcp` over MCP's Streamable HTTP transport, stateless, with graceful shutdown on Ctrl+C. It's an optional `http` Cargo feature, on by default.
+- **Look at:** [`src/http.rs`](../src/http.rs), the `on_every_transport!` macro in [`src/server.rs`](../src/server.rs)'s tests, and `serve_http` in [`src/main.rs`](../src/main.rs).
+- **Rust:**
+  - [Cargo features and `#[cfg]`](rust-concepts.md#modules-crates-and-cargo)
+  - [`tower::Service`](rust-concepts.md#traits-and-generics)
+  - `#[non_exhaustive]` structs built with builder methods
+  - [`macro_rules!`](rust-concepts.md#macros-and-attributes)
+  - [`thread_local!`, `RefCell` and `Once`](rust-concepts.md#testing)
+- **Lesson:** running the tool tests over both transports exposed a **flaky test from Step 16**. It already failed about half the time on `main` when run with only the server tests. Thread-local log collectors race with `tracing`'s process-wide cache, so the capture now goes through one global subscriber that routes lines to each test's own buffer.
+
 ## What's next
 
-Steps 19–22 host the same tools on AWS Lambda over HTTP, so Claude can use them from any device. They add an HTTP transport, bearer-token auth and limits, Lambda packaging, and a SAM deploy. See the [plan](plans/financials-mcp-learning-plan.md#step-19--streamable-http-transport-locally).
+Steps 20–22 add a bearer token and request limits, package the server for AWS Lambda, and deploy it with SAM, so Claude can use the tools from any device. See the [plan](plans/financials-mcp-learning-plan.md#step-20--bearer-token-auth-and-request-limits).

@@ -14,6 +14,7 @@ repository = "https://github.com/zachfire9/financials-mcp"
 publish = false
 
 [dependencies]
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"], optional = true }
 clap = { version = "4.6.8", features = ["derive"] }
 reqwest = "0.13.5"
 rmcp = { version = "3.11.0", features = ["server", "macros", "transport-io"] }
@@ -27,7 +28,14 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "env-filter", "std"] }
 
 [dev-dependencies]
-rmcp = { version = "3.11.0", features = ["client"] }
+rmcp = { version = "3.11.0", features = ["client", "transport-streamable-http-client-reqwest"] }
 tempfile = "3.27.0"
 wiremock = "0.6.5"
 
+# Optional parts of the program, chosen at build time. `cargo build` uses the
+# defaults; `cargo build --no-default-features` leaves them out.
+[features]
+default = ["http"]
+# `serve --http`: MCP over Streamable HTTP (Step 19). Turns on the axum
+# dependency and rmcp's HTTP server transport.
+http = ["dep:axum", "rmcp/transport-streamable-http-server", "tokio/net", "tokio/signal"]

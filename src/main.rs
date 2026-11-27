@@ -31,7 +31,9 @@ async fn main() -> ExitCode {
             Ok(())
         }
         Some(Command::Project { plan }) => project(&plan).await,
-        Some(Command::Serve) => serve().await,
+        #[cfg(feature = "http")]
+        Some(Command::Serve { http: true, listen }) => serve_http(listen).await,
+        Some(Command::Serve { .. }) => serve().await,
     };
 
     match result {
@@ -42,6 +44,23 @@ async fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Serves MCP over HTTP at `http://<listen>/mcp` until Ctrl+C.
+#[cfg(feature = "http")]
+async fn serve_http(listen: std::net::SocketAddr) -> Result<(), Error> {
+    financials_mcp::logging::init();
+    let config = Config::from_env()?;
+    let server = FinancialsServer::new(ApiProjector::new(&config)?);
+    let listener = financials_mcp::http::bind(listen).await?;
+    // Stop on Ctrl+C. If the signal can't be watched (rare), never stop on
+    // it: `std::future::pending` is a future that never completes.
+    let shutdown = async {
+        if tokio::signal::ctrl_c().await.is_err() {
+            std::future::pending::<()>().await;
+        }
+    };
+    financials_mcp::http::serve(server, listener, shutdown).await
 }
 
 /// Serves MCP over stdin/stdout until the client disconnects.

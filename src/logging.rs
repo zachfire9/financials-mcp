@@ -168,18 +168,30 @@ pub fn tool_call_finished(started: Instant, projections: u32, error: Option<&Err
 #[cfg(test)]
 pub(crate) mod capture {
     //! Collecting log output in memory for tests.
+    //!
+    //! `tracing` caches, per log statement and for the whole process, whether
+    //! any subscriber wants it. With a separate subscriber per test thread
+    //! (`set_default`), tests running in parallel race on that cache, and a
+    //! capturing test can miss lines: it failed about half the time when run
+    //! with only the server tests.
+    //!
+    //! So the test binary has **one** global subscriber, installed once, with
+    //! this crate always enabled (no cache can say "never"). Each capturing
+    //! test registers a buffer and a filter for its own thread, and the
+    //! subscriber's writer sends each line to the current thread's buffer if
+    //! the filter allows it. Tests run their server on tokio's single-threaded
+    //! test runtime, so its tasks log on the test's thread too.
 
+    use std::cell::RefCell;
     use std::io::Write;
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, Once};
 
+    use tracing_subscriber::filter::Targets;
     use tracing_subscriber::fmt::MakeWriter;
 
-    /// A shared, growable buffer that a test subscriber writes into.
-    ///
-    /// `MakeWriter` is the subscriber's way of asking "where should this line
-    /// go?"; here, always into the same buffer. `Clone` shares the buffer
-    /// (it's an `Arc`), so the test keeps one handle and the subscriber the
-    /// other.
+    /// A shared, growable buffer that captured log lines are written into.
+    /// `Clone` shares the buffer (it's an `Arc`), so the test keeps one handle
+    /// and the writer gets others.
     #[derive(Clone, Default)]
     pub struct Captured(Arc<Mutex<Vec<u8>>>);
 
@@ -200,30 +212,89 @@ pub(crate) mod capture {
         }
     }
 
-    // `impl<'a> MakeWriter<'a> for Captured` reads "for any lifetime `'a`":
-    // the trait is generic over the lifetime of the writer it hands out.
-    impl<'a> MakeWriter<'a> for Captured {
-        type Writer = Captured;
+    // `thread_local!` gives each thread its own copy of a value, like Go's
+    // (missing) goroutine-local storage or Python's `threading.local()`.
+    // `RefCell` allows changing it through a shared reference, checked at
+    // runtime; fine here, since only this thread ever touches its copy.
+    thread_local! {
+        static ACTIVE: RefCell<Option<(Captured, Targets)>> = const { RefCell::new(None) };
+    }
 
-        fn make_writer(&'a self) -> Self::Writer {
-            self.clone()
+    /// Where one log line goes: into a test's buffer, or nowhere.
+    pub enum Destination {
+        Buffer(Captured),
+        Discard,
+    }
+
+    impl Write for Destination {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            match self {
+                Destination::Buffer(captured) => captured.write(bytes),
+                Destination::Discard => Ok(bytes.len()),
+            }
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
         }
     }
 
-    /// Captures everything logged on this thread at `filter` until the
-    /// returned guard is dropped. Tests run the server on tokio's
-    /// single-threaded test runtime, so its tasks log on this thread too.
-    pub fn start(filter: &str) -> (Captured, tracing::subscriber::DefaultGuard) {
+    /// The global subscriber's writer: picks the destination per line.
+    struct ToCurrentThread;
+
+    // `impl<'a> MakeWriter<'a>` reads "for any lifetime `'a`": the trait is
+    // generic over the lifetime of the writer it hands out.
+    impl<'a> MakeWriter<'a> for ToCurrentThread {
+        type Writer = Destination;
+
+        fn make_writer(&'a self) -> Destination {
+            Destination::Discard
+        }
+
+        // Called with each event's metadata (level, target), so the
+        // per-test filter can decide.
+        fn make_writer_for(&'a self, meta: &tracing::Metadata<'_>) -> Destination {
+            ACTIVE.with(|active| match &*active.borrow() {
+                Some((captured, filter)) if filter.would_enable(meta.target(), meta.level()) => {
+                    Destination::Buffer(captured.clone())
+                }
+                _ => Destination::Discard,
+            })
+        }
+    }
+
+    /// Stops capturing for this thread when dropped.
+    pub struct Guard;
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            ACTIVE.with(|active| active.borrow_mut().take());
+        }
+    }
+
+    /// Captures what this thread logs, as `filter` allows (`RUST_LOG`-style
+    /// target syntax such as `financials_mcp=debug`), until the returned
+    /// guard is dropped.
+    pub fn start(filter: &str) -> (Captured, Guard) {
+        // `Once` runs its closure exactly once per process, even if many
+        // tests call `start` at the same moment.
+        static INSTALL: Once = Once::new();
+        INSTALL.call_once(|| {
+            let subscriber = tracing_subscriber::fmt()
+                .with_env_filter(tracing_subscriber::EnvFilter::new("financials_mcp=trace"))
+                .with_writer(ToCurrentThread)
+                .with_ansi(false)
+                // No timestamps: their digits could match an amount by chance.
+                .without_time()
+                .finish();
+            tracing::subscriber::set_global_default(subscriber)
+                .expect("only this module installs a global subscriber in tests");
+        });
+
         let captured = Captured::default();
-        let subscriber = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
-            .with_writer(captured.clone())
-            .with_ansi(false)
-            // No timestamps: their digits could match an amount by chance.
-            .without_time()
-            .finish();
-        let guard = tracing::subscriber::set_default(subscriber);
-        (captured, guard)
+        let filter: Targets = filter.parse().expect("a valid log filter");
+        ACTIVE.with(|active| *active.borrow_mut() = Some((captured.clone(), filter)));
+        (captured, Guard)
     }
 }
 

@@ -15,7 +15,10 @@ You ──► Claude (Desktop or Code) ──MCP over stdio──► financials-
 - **financials-mcp** turns one tool call into the right set of projections, runs them, and boils each one down to a compact summary.
 - **financials-api** does all the math. It's the same engine the financials-ui planner uses, so answers match what you'd see there.
 
-The client starts `financials-mcp serve` as a child process and exchanges JSON-RPC messages over its stdin and stdout, one per line. That's why nothing else may ever be printed to stdout while serving, and why logs go to stderr.
+There are two transports, carrying the same JSON-RPC messages to the same server:
+
+- **stdio:** the client starts `financials-mcp serve` as a child process and exchanges messages over its stdin and stdout, one per line. That's why nothing else may ever be printed to stdout while serving, and why logs go to stderr.
+- **Streamable HTTP** (`serve --http`, in [`http.rs`](../src/http.rs)): each message is a `POST /mcp`, answered with JSON. It's stateless: no sessions, and each request is handled by a fresh clone of the server (sharing one projector). rmcp provides the transport as a `tower::Service`, and axum routes requests to it. Steps 20–22 add auth and limits, then host it on AWS Lambda.
 
 ## Modules
 
@@ -25,6 +28,7 @@ The client starts `financials-mcp serve` as a child process and exchanges JSON-R
 | [`main.rs`](../src/main.rs) | The executable: parses the command line, installs logging for `serve`, runs a command, turns errors into exit codes |
 | [`server.rs`](../src/server.rs) | The MCP server: the five tools, their arguments and results, and turning errors into tool results |
 | [`guidance.rs`](../src/guidance.rs) | The instructions sent to the model at `initialize` |
+| [`http.rs`](../src/http.rs) | `serve --http`: rmcp's Streamable HTTP service in stateless mode, routed by axum, with graceful shutdown (behind the `http` feature) |
 | [`logging.rs`](../src/logging.rs) | stderr logging, the level filter, and `Counted`, a projector wrapper that counts and logs projections |
 | [`plan.rs`](../src/plan.rs) | The plan types (the API request), strict parsing, and pre-checks in the API's wording |
 | [`overrides.rs`](../src/overrides.rs) | The ten "what if" operations, applied in order to a copy of a plan |
@@ -69,7 +73,8 @@ The other batch tools follow the same path with different preparation: `sweep` b
 - **Errors are values the model can act on.** Bad input and API failures are successful tool calls with `isError: true` and a message that names the field or override and suggests a fix. Only a broken protocol is a protocol error.
 - **No plan contents anywhere but the conversation.** Error messages name locations and rules, never values. Logs record the tool, duration, projection count and error *kind*. The log level can't be raised for dependencies, because the MCP library logs full requests at `debug`.
 - **Generic over the projector.** Every tool works with any `Projector`: `ApiProjector` in production, `FakeProjector` in tests, and `Counted<…>` wrapping either for logging. Generics are resolved at compile time, so this costs nothing at runtime.
-- **Concurrency without threads.** The server runs on tokio's single-threaded runtime. Projections spend nearly all their time waiting on the network, so four in flight on one thread is enough.
+- **Concurrency without threads.** The server runs on tokio's single-threaded runtime, over HTTP too. Projections spend nearly all their time waiting on the network, so many requests in flight on one thread is enough.
+- **Optional transports are Cargo features.** The HTTP transport (and axum) is the default `http` feature. `cargo build --no-default-features` leaves it out entirely, and CI tests both builds.
 
 ## How an agent uses the tools
 
@@ -126,15 +131,16 @@ The model never estimated a number: each one came from a tool. It asked about go
 
 ## Testing strategy
 
-Every behavior has a deterministic test, and **no test calls the real financials-api or a model**. There are 183 tests:
+Every behavior has a deterministic test, and **no test calls the real financials-api or a model**. There are 209 tests (183 without the `http` feature):
 
 | Kind | Where | What they cover |
 |---|---|---|
 | Unit tests | `#[cfg(test)] mod tests` in each `src/` file | Parsing and checks, each override, summaries, the search, ranking, error messages, log filters |
 | Fake projector | `FakeProjector` in [`projector.rs`](../src/projector.rs) | Every tool's logic, with scripted or computed projections, plus counting and concurrency fakes in `batch.rs` |
 | Mock HTTP server | [`wiremock`](https://crates.io/crates/wiremock) in [`api.rs`](../src/api.rs) and the logging test | The real HTTP client: status codes, timeouts, redirects, size caps, the token header, and that the token never reaches logs |
-| In-process MCP client | `server.rs` tests, over `tokio::io::duplex` | Tool listing, schemas, annotations, results and tool errors, through rmcp exactly as a client sees them |
-| The real binary | [`tests/cli.rs`](../tests/cli.rs), [`tests/serve.rs`](../tests/serve.rs) | Exit codes and help text, raw MCP over stdio, nothing but protocol on stdout, logs on stderr |
+| In-process MCP client | `server.rs` tests, over `tokio::io::duplex` **and** over HTTP on a local port | Tool listing, schemas, annotations, results and tool errors, through rmcp exactly as a client sees them. A `macro_rules!` macro runs each test once per transport |
+| HTTP transport | `http.rs` tests | Stateless requests with no session id, JSON responses, the `Host` check, unknown paths, graceful shutdown with a call in progress |
+| The real binary | [`tests/cli.rs`](../tests/cli.rs), [`tests/serve.rs`](../tests/serve.rs) | Exit codes and help text, raw MCP over stdio and over HTTP (`--listen 127.0.0.1:0`), nothing on stdout but protocol, logs on stderr |
 | Fixtures | [`tests/fixtures/`](../tests/fixtures) | Two made-up plans and the real financials-api responses for them |
 | Docs | [`tests/docs.rs`](../tests/docs.rs) | Links and anchors in the docs resolve, and the docs list every tool, subcommand and setting |
 
@@ -146,5 +152,5 @@ Some tests check the tests themselves. A few were confirmed to fail when the cod
 The manual checks run against a real local financials-api and a real client: the end-to-end scripts in each PR's verification section, and Claude Desktop or Claude Code.
 
 CI runs on every push and pull request, and weekly:
-- `cargo fmt --check`, `cargo clippy -- -D warnings` and `cargo test` on Linux and Windows
+- `cargo fmt --check`, `cargo clippy -- -D warnings` and `cargo test` on Linux and Windows, with and without default features
 - `cargo deny check` for dependency advisories, licenses and sources
