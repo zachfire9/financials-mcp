@@ -266,28 +266,30 @@ fn the_readme_documents_every_subcommand_and_setting() {
         );
     }
 
-    // Settings: every FINANCIALS_* variable mentioned in any `--help` must be
-    // in the README's configuration table.
+    // Settings: every FINANCIALS_* or MCP_* variable mentioned in any
+    // `--help` must be in the README's configuration table.
     let mut settings: Vec<String> = ["project", "serve"]
         .iter()
         .flat_map(|cmd| {
             help(&[cmd, "--help"])
                 .split(|c: char| !(c.is_ascii_uppercase() || c == '_'))
-                .filter(|word| word.starts_with("FINANCIALS_"))
+                .filter(|word| word.starts_with("FINANCIALS_") || word.starts_with("MCP_"))
                 .map(str::to_string)
                 .collect::<Vec<_>>()
         })
         .collect();
     settings.sort();
     settings.dedup();
-    assert_eq!(
-        settings,
-        [
-            "FINANCIALS_ACCESS_TOKEN",
-            "FINANCIALS_API_URL",
-            "FINANCIALS_MCP_LOG"
-        ]
-    );
+    let mut expected = vec![
+        "FINANCIALS_ACCESS_TOKEN",
+        "FINANCIALS_API_URL",
+        "FINANCIALS_MCP_LOG",
+    ];
+    // The HTTP settings only appear in `--help` when `serve --http` exists.
+    if cfg!(feature = "http") {
+        expected.extend(["MCP_ALLOWED_HOSTS", "MCP_BEARER_TOKEN"]);
+    }
+    assert_eq!(settings, expected);
     for setting in settings {
         assert!(
             readme.contains(&format!("| `{setting}` |")),

@@ -44,6 +44,7 @@ Topics:
 | `move` closures and `async move` blocks | Spawned tasks in [`batch.rs`](../src/batch.rs) (Step 11) | Go closures capture by reference |
 | `+ use<>` on `impl Trait` returns | The `env_of` test helper in [`config.rs`](../src/config.rs) (Step 4) | No equivalent |
 | RAII: cleanup when a value is dropped | `Mutex` guards, `_permit` in [`batch.rs`](../src/batch.rs), temp files in tests | `defer` or `with`, but written by the compiler |
+| Constant-time comparison for secrets | `BearerToken::matches` with `subtle::ConstantTimeEq`, and a hand-written `PartialEq` that uses it ([`config.rs`](../src/config.rs), Step 20) | `hmac.Equal` / `subtle.ConstantTimeCompare` in Go; `hmac.compare_digest` in Python |
 
 ## Types: structs, enums, Option and Result
 
@@ -82,6 +83,7 @@ Topics:
 | Traits, implemented explicitly | `impl Projector for ApiProjector` ([`api.rs`](../src/api.rs)) | Go interfaces are satisfied implicitly; Python protocols |
 | Implementing a standard trait by hand | `impl fmt::Debug for AccessToken` ([`config.rs`](../src/config.rs)) | Implementing `String()` or `__repr__` |
 | `tower::Service`: request in, future of a response out | rmcp's `StreamableHttpService`, routed by axum ([`http.rs`](../src/http.rs), Step 19) | Go's `http.Handler`; a WSGI/ASGI app |
+| Middleware layers | `axum::middleware::from_fn_with_state(token, require_bearer_token)` and `.layer(…)` in [`http.rs`](../src/http.rs) (Step 20) | `func(http.Handler) http.Handler`; WSGI middleware |
 | `-> impl Future + Send` in a trait | `Projector::project` ([`projector.rs`](../src/projector.rs), Step 6) | No equivalent |
 | Generics, specialized per type at compile time | `project_all<P: Projector>` ([`batch.rs`](../src/batch.rs)), every tool | Go generics (usually one shared copy); Python type hints (not checked) |
 | Trait objects (`Box<dyn Fn …>`) for runtime choice | `ProjectionFn` in [`projector.rs`](../src/projector.rs) | A Go interface value |
@@ -111,6 +113,7 @@ Topics:
 | `tokio::spawn`, `JoinSet` | `project_all` ([`batch.rs`](../src/batch.rs), Step 11) | Goroutines with an `errgroup`; `asyncio.as_completed` |
 | `Semaphore` for a concurrency limit | `project_all` (4 at a time) | A buffered channel; `asyncio.Semaphore` |
 | Graceful shutdown with any future | `http::serve(…, shutdown: impl Future)`; Ctrl+C via `tokio::signal::ctrl_c`, `std::future::pending` in tests ([`http.rs`](../src/http.rs)) | `http.Server.Shutdown(ctx)`; a cancelled `asyncio` task |
+| Cancelling by dropping a future | `tokio::time::timeout(TOOL_TIME_LIMIT, …)` in `FinancialsServer::call` ([`server.rs`](../src/server.rs), Step 20): when the timer wins, the work is dropped, which stops it | `context.WithTimeout`, passed all the way down; `asyncio.wait_for` |
 | `Arc` for shared ownership | The projector shared across tasks and connections | Automatic with a GC |
 | `Mutex` and atomics for shared state | `FakeProjector::received`, `Counted::count` | `sync.Mutex`, `atomic`; `threading.Lock` |
 | `Send` and `Sync` | `trait Projector: Send + Sync`; the `+ Send` bounds in `FinancialsServer::call` | Checked by Go's race detector at runtime, if at all |
@@ -124,6 +127,7 @@ Topics:
 | Function-like macros (`!`) | `format!`, `env!`, `matches!`, `include_str!` | `fmt.Sprintf`, `//go:embed` |
 | `env!` expands where it's written | `get_info` ([`server.rs`](../src/server.rs), Step 9) | `ldflags -X` |
 | `concat!` for compile-time strings | `INSTRUCTIONS` ([`guidance.rs`](../src/guidance.rs), Step 15) | Constant string concatenation |
+| `#[cfg_attr(feature, doc = "…")]` | Help text for `--http` only in builds that have it ([`cli.rs`](../src/cli.rs), Step 20) | No direct equivalent |
 | `macro_rules!`: your own macros | `on_every_transport!` in the [`server.rs`](../src/server.rs) tests: one test body, a test per transport (Step 19) | Table-driven tests or `pytest.mark.parametrize`, but generating real functions |
 | `#[derive]` generates trait code | `Serialize`, `Deserialize`, `JsonSchema`, `Parser` | `encoding/json` reflection; dataclasses |
 | serde attributes | `rename_all`, `default`, `skip_serializing_if`, `deny_unknown_fields`, `tag = "op"`, `untagged`, `flatten` | Go struct tags |
@@ -148,6 +152,7 @@ Topics:
 | Unit tests next to the code | `#[cfg(test)] mod tests` in every module | `_test.go` in the same package |
 | Integration tests in `tests/` | [`tests/`](../tests) (public API and the real binary) | An external test package |
 | `#[tokio::test]` | Async tests throughout | `pytest-asyncio` |
+| Paused time: `#[tokio::test(start_paused = true)]` | The 25-second limit test in [`server.rs`](../src/server.rs) runs instantly (Step 20) | A fake clock (`freezegun`, injected `time.Now`) |
 | Fakes behind a trait | `FakeProjector` ([`projector.rs`](../src/projector.rs)) | Interface fakes; `unittest.mock` |
 | A mock HTTP server | wiremock in [`api.rs`](../src/api.rs) | `httptest`; `responses` |
 | In-memory pipes for protocol tests | `tokio::io::duplex` in [`server.rs`](../src/server.rs) | `net.Pipe` |

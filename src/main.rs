@@ -51,6 +51,8 @@ async fn main() -> ExitCode {
 async fn serve_http(listen: std::net::SocketAddr) -> Result<(), Error> {
     financials_mcp::logging::init();
     let config = Config::from_env()?;
+    // Check the token before anything else: no token, no server.
+    let options = financials_mcp::http::HttpOptions::from_config(&config)?;
     let server = FinancialsServer::new(ApiProjector::new(&config)?);
     let listener = financials_mcp::http::bind(listen).await?;
     // Stop on Ctrl+C. If the signal can't be watched (rare), never stop on
@@ -60,7 +62,7 @@ async fn serve_http(listen: std::net::SocketAddr) -> Result<(), Error> {
             std::future::pending::<()>().await;
         }
     };
-    financials_mcp::http::serve(server, listener, shutdown).await
+    financials_mcp::http::serve(server, options, listener, shutdown).await
 }
 
 /// Serves MCP over stdin/stdout until the client disconnects.

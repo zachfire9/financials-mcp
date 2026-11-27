@@ -33,7 +33,8 @@ To follow along, read each step's files in order. Explanations of Rust concepts 
   [dependencies](#step-17-dependency-checks) ·
   [docs](#step-18-learning-walkthrough)
 - **Going online (19–22):**
-  [HTTP transport](#step-19-streamable-http-transport)
+  [HTTP transport](#step-19-streamable-http-transport) ·
+  [auth and limits](#step-20-bearer-token-auth-and-request-limits)
 
 ---
 
@@ -295,6 +296,24 @@ To follow along, read each step's files in order. Explanations of Rust concepts 
   - [`thread_local!`, `RefCell` and `Once`](rust-concepts.md#testing)
 - **Lesson:** running the tool tests over both transports exposed a **flaky test from Step 16**. It already failed about half the time on `main` when run with only the server tests. Thread-local log collectors race with `tracing`'s process-wide cache, so the capture now goes through one global subscriber that routes lines to each test's own buffer.
 
+### Step 20: Bearer-token auth and request limits
+
+[PR #22](https://github.com/zachfire9/financials-mcp/pull/22)
+
+- **Built:** the lock that must be in place before the server leaves your machine.
+  - `serve --http` needs `MCP_BEARER_TOKEN` (32+ characters) to start.
+  - Every request needs `Authorization: Bearer <token>`, checked in constant time by middleware before the body is read, and gets `401` otherwise.
+  - `MCP_ALLOWED_HOSTS` sets the accepted `Host` values.
+  - Bodies over 1 MiB get `413`, and any tool call past 25 seconds becomes a tool error.
+- **Look at:** `require_bearer_token`, `check_bearer` and `HttpOptions` in [`src/http.rs`](../src/http.rs); `BearerToken` in [`src/config.rs`](../src/config.rs); the time limit in `FinancialsServer::call` in [`src/server.rs`](../src/server.rs).
+- **Rust:**
+  - [middleware layers](rust-concepts.md#traits-and-generics) (`axum::middleware::from_fn_with_state`)
+  - [constant-time comparison](rust-concepts.md#ownership-and-borrowing) and a hand-written `PartialEq`
+  - [cancelling by dropping a future](rust-concepts.md#async-and-concurrency) (`tokio::time::timeout`)
+  - [paused time in tests](rust-concepts.md#testing)
+  - [`cfg_attr` on doc comments](rust-concepts.md#macros-and-attributes)
+- **Lesson:** rmcp already had a body limit (`with_max_request_body_bytes`, 4 MiB by default), so the 1 MiB cap is one builder call rather than another layer of middleware.
+
 ## What's next
 
-Steps 20–22 add a bearer token and request limits, package the server for AWS Lambda, and deploy it with SAM, so Claude can use the tools from any device. See the [plan](plans/financials-mcp-learning-plan.md#step-20--bearer-token-auth-and-request-limits).
+Steps 21–22 package the server for AWS Lambda and deploy it with SAM, so Claude can use the tools from any device. See the [plan](plans/financials-mcp-learning-plan.md#step-21--lambda-packaging-with-cargo-lambda).

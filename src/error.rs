@@ -67,6 +67,13 @@ pub enum Error {
         problem: String,
     },
 
+    /// A tool call ran past the time limit and was stopped.
+    #[error(
+        "the tool call took longer than {seconds} seconds and was stopped; \
+         try fewer scenarios or values, or check that financials-api is responding"
+    )]
+    TimedOut { seconds: u64 },
+
     /// financials-api refused the access token (`401`). The token itself is
     /// never part of the message.
     #[error(
@@ -119,6 +126,7 @@ impl Error {
             Error::SweepShape { .. } => "sweep_shape",
             Error::ConstraintShape { .. } => "constraint_shape",
             Error::InvalidOverride { .. } => "invalid_override",
+            Error::TimedOut { .. } => "timed_out",
             Error::Auth => "auth",
             Error::Api { .. } => "api",
             Error::UnexpectedResponse { .. } => "unexpected_response",

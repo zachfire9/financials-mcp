@@ -38,6 +38,11 @@ use crate::summary::Summary;
 use crate::sweep::{Parameter, Sweep, SweepResult, run_sweep};
 use crate::withdrawal_order::{WithdrawalOrderOptions, withdrawal_order_options};
 
+/// The most one tool call may take, from start to result. It stays under
+/// API Gateway's 30-second limit (Steps 21–22), so a slow call becomes a
+/// readable tool error rather than a gateway timeout.
+pub const TOOL_TIME_LIMIT: std::time::Duration = std::time::Duration::from_secs(25);
+
 /// Arguments for `run_projection`.
 ///
 /// `plan` is advertised to clients with the full `Plan` schema
@@ -481,7 +486,19 @@ impl<P: Projector + 'static> FinancialsServer<P> {
         // points. (Tasks spawned inside don't inherit it automatically;
         // `batch.rs` passes it on explicitly.)
         async move {
-            let outcome = run(Arc::clone(&projector)).await;
+            // `tokio::time::timeout` races the work against a timer. If the
+            // timer wins, the work's future is *dropped*, which cancels it:
+            // every `.await` inside it simply never resumes, and anything it
+            // owned (HTTP requests in flight, semaphore permits) is cleaned
+            // up by `Drop`. Go would need a `context.Context` passed all the
+            // way down for the same effect.
+            let outcome =
+                match tokio::time::timeout(TOOL_TIME_LIMIT, run(Arc::clone(&projector))).await {
+                    Ok(outcome) => outcome,
+                    Err(_elapsed) => Err(Error::TimedOut {
+                        seconds: TOOL_TIME_LIMIT.as_secs(),
+                    }),
+                };
             logging::tool_call_finished(started, projector.count(), outcome.as_ref().err());
             tool_result(outcome)
         }
@@ -631,26 +648,13 @@ mod tests {
             Transport::Stdio => connect(projector).await,
             #[cfg(feature = "http")]
             Transport::Http => {
-                let listener = crate::http::bind("127.0.0.1:0".parse().unwrap())
-                    .await
-                    .unwrap();
-                let url = format!(
-                    "http://{}{}",
-                    listener.local_addr().unwrap(),
-                    crate::http::MCP_PATH
+                let url =
+                    crate::http::start_for_tests(projector, crate::http::test_options()).await;
+                let transport = rmcp::transport::StreamableHttpClientTransport::from_config(
+                    rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(url)
+                        .auth_header(crate::http::TEST_TOKEN),
                 );
-                // Runs until the test's runtime shuts down at the end of the
-                // test: `pending()` is a shutdown signal that never comes.
-                tokio::spawn(crate::http::serve(
-                    FinancialsServer::new(projector),
-                    listener,
-                    std::future::pending(),
-                ));
-                ().serve(rmcp::transport::StreamableHttpClientTransport::from_uri(
-                    url,
-                ))
-                .await
-                .unwrap()
+                ().serve(transport).await.unwrap()
             }
         }
     }
@@ -1323,5 +1327,36 @@ mod tests {
         let logs = captured.text();
         assert!(logs.contains("tool call succeeded"), "{logs}");
         assert!(!logs.contains("projection finished"), "{logs}");
+    }
+
+    /// A projector that never answers.
+    struct Silent;
+
+    impl Projector for Silent {
+        async fn project(&self, _plan: &Plan) -> Result<crate::projection::Projection, Error> {
+            std::future::pending().await
+        }
+    }
+
+    // `start_paused = true` runs the test with tokio's clock paused: when
+    // every task is waiting on a timer, time jumps straight to the next one.
+    // The 25-second limit passes instantly, and exactly.
+    #[tokio::test(start_paused = true)]
+    async fn a_tool_call_past_the_time_limit_becomes_a_tool_error() {
+        let client = connect(Silent).await;
+        let started = tokio::time::Instant::now();
+
+        let result = call(&client, PLAN).await;
+
+        assert_eq!(result.is_error, Some(true));
+        assert_eq!(
+            text_of(&result),
+            "the tool call took longer than 25 seconds and was stopped; \
+             try fewer scenarios or values, or check that financials-api is responding"
+        );
+        assert!(started.elapsed() >= TOOL_TIME_LIMIT);
+        // The server is still usable afterwards.
+        let tools = client.list_all_tools().await.unwrap();
+        assert_eq!(tools.len(), 5);
     }
 }
