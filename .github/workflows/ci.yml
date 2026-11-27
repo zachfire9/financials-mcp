@@ -91,9 +91,12 @@ jobs:
           echo "$RUNNER_TEMP/cargo-lambda/bin" >> "$GITHUB_PATH"
       - name: Build the Lambda binary (arm64)
         run: cargo lambda build --release --arm64 --locked --features lambda --bin lambda --output-format zip
+      # Check the zip that would be deployed: its `bootstrap` must be an arm64
+      # binary that Lambda's runtime can load.
       - name: Check the binary
         run: |
-          bootstrap=target/lambda/lambda/bootstrap
+          unzip -o -q target/lambda/lambda/bootstrap.zip -d "$RUNNER_TEMP/lambda"
+          bootstrap="$RUNNER_TEMP/lambda/bootstrap"
           file "$bootstrap" | tee /dev/stderr | grep -q 'ARM aarch64'
           # The newest glibc symbol version it needs. Lambda's provided.al2023
           # runtime has glibc 2.34, so nothing newer may appear.
