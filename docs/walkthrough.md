@@ -334,6 +334,26 @@ To follow along, read each step's files in order. Explanations of Rust concepts 
   - `deny.toml` had `all-features = false`, so cargo-deny had never checked dependencies behind optional features. It does now, and `lambda_http` passes.
   - Linking against an old glibc is why cargo-lambda uses Zig. The binary needs glibc 2.30, and Lambda's `provided.al2023` has 2.34. A plain `cargo build` on a newer Linux would need that machine's newer glibc.
 
+### Step 22: Deploy with SAM and GitHub OIDC, then connect Claude
+
+[PR #24](https://github.com/zachfire9/financials-mcp/pull/24)
+
+- **Built:** the deployment, as code.
+  - [`template.yaml`](../template.yaml) describes the arm64 function, an HTTP API with a throttled `ANY /mcp` route, a 14-day log group and optional reserved concurrency.
+  - [`deploy.yml`](../.github/workflows/deploy.yml), run by hand on `main`, runs all of CI, deploys the zip CI built with short-lived OIDC credentials, and smoke-tests the live endpoint.
+  - [`infra/iam/`](../infra/iam/README.md) holds the deploy role's trust and permission policies, with placeholders.
+  - The financials-api client retries `429` responses, since financials-api throttles too and one tool call can send 25 projections.
+  - The README covers deploying, rotating the token, and connecting Claude Code and Claude's custom connectors.
+- **Look at:** the comment at the top of [`template.yaml`](../template.yaml) on why the API is written out; the `ci` job in [`deploy.yml`](../.github/workflows/deploy.yml) (CI as a reusable workflow); `ApiProjector::project` and `THROTTLE_RETRY_DELAYS` in [`src/api.rs`](../src/api.rs).
+- **Rust:**
+  - [retrying with `loop` and `break value`](rust-concepts.md#iterators-and-closures)
+  - [a `&'static [Duration]` field](rust-concepts.md#ownership-and-borrowing)
+  - how a release build gets from `cargo lambda build` to `sam deploy` without `sam build`
+- **Lessons:**
+  - The plan had `MCP_ALLOWED_HOSTS` as a deploy parameter, but the API's domain doesn't exist until the first deploy. Writing the API Gateway resources out breaks the dependency cycle that made SAM's shorthand unable to fill it in.
+  - A `financials-mcp-*` IAM pattern would also match the deploy role itself, letting a deploy rewrite its own policies. The patterns name the function and its role instead.
+  - Public repo, public Actions logs: anything that identifies the deployment is a GitHub secret, so it's masked, and the workflow masks the endpoint before `sam deploy` prints it.
+
 ## What's next
 
-Step 22 deploys the Lambda with SAM and GitHub OIDC and connects Claude to it, so the tools work from any device. See the [plan](plans/financials-mcp-learning-plan.md#step-22--deploy-with-sam-and-github-oidc-then-connect-claude).
+The planned steps are done. Follow-ups are listed under [Additional functionality](plans/financials-mcp-learning-plan.md#additional-functionality).

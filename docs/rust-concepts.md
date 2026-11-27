@@ -43,6 +43,7 @@ Topics:
 | `.as_ref()` to borrow inside an `Option` | `projection.mortgage.as_ref().map(…)` ([`summary.rs`](../src/summary.rs), Step 5) | No equivalent needed with a garbage collector |
 | `Path` versus `PathBuf` | `run_project(…, plan_path: &Path, …)` ([`cli.rs`](../src/cli.rs), Step 8) | `&str` versus `String`, for paths |
 | Lifetimes (`'a`) on returned references and structs | `find_expense<'p>` ([`overrides.rs`](../src/overrides.rs)); `struct Search<'a, P>` ([`max_spending.rs`](../src/max_spending.rs), Step 13) | Implicit with a garbage collector |
+| A `&'static [T]` field: borrowed data that lives for the whole program | `retry_delays: &'static [Duration]` in `ApiProjector` points at a `const` array ([`api.rs`](../src/api.rs), Step 22), so cloning copies a reference, not the data | A package-level `var` slice in Go; a module-level tuple in Python |
 | `'static`: owns its data, or lives forever | `FakeProjector::from_fn(… + 'static)`; spawned tasks ([`batch.rs`](../src/batch.rs)) | Goroutines capture anything, and the GC keeps it alive |
 | `move` closures and `async move` blocks | Spawned tasks in [`batch.rs`](../src/batch.rs) (Step 11) | Go closures capture by reference |
 | `+ use<>` on `impl Trait` returns | The `env_of` test helper in [`config.rs`](../src/config.rs) (Step 4) | No equivalent |
@@ -113,6 +114,7 @@ Topics:
 |---|---|---|
 | `async fn`, futures and `.await` | [`projector.rs`](../src/projector.rs), [`api.rs`](../src/api.rs) (Step 6) | Python `async`/`await`; Go hides this behind goroutines |
 | The tokio runtime, `#[tokio::main]` | [`main.rs`](../src/main.rs) (`current_thread`) | `asyncio.run`; the Go runtime |
+| Retrying with `loop`, `break value` and an iterator of pauses | `ApiProjector::project` ([`api.rs`](../src/api.rs), Step 22): each `pauses.next()` hands out the next wait, and `None` ends the retries | A `for attempt in range(…)` loop with `break`; Go's `for` with a counter |
 | Work once per process versus per request | `lambda::run` builds the router before `lambda_http::run` loops over events ([`lambda.rs`](../src/lambda.rs), Step 21) | Package-level setup in a Go Lambda handler; module-level setup in Python |
 | `tokio::spawn`, `JoinSet` | `project_all` ([`batch.rs`](../src/batch.rs), Step 11) | Goroutines with an `errgroup`; `asyncio.as_completed` |
 | `Semaphore` for a concurrency limit | `project_all` (4 at a time) | A buffered channel; `asyncio.Semaphore` |

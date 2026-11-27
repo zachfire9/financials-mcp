@@ -8,6 +8,9 @@ on:
   # nothing in the repo changed.
   schedule:
     - cron: '23 14 * * 1'
+  # The deploy workflow runs this whole file first and deploys the Lambda zip
+  # it builds, so what's deployed is exactly what was tested and checked.
+  workflow_call:
 
 permissions:
   contents: read
@@ -104,3 +107,29 @@ jobs:
           echo "needs glibc $newest (provided.al2023 has 2.34)"
           [ "$(printf '%s\n2.34\n' "$newest" | sort -V | tail -1)" = "2.34" ]
           ls -l target/lambda/lambda/
+      # The checked zip, kept for the deploy workflow (and for a week, in case
+      # you want to look at it).
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lambda-bootstrap
+          path: target/lambda/lambda/bootstrap.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  # template.yaml is valid SAM and passes cfn-lint. No AWS credentials needed.
+  template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The native installer, at a pinned version, checked against the
+      # release's published SHA-256.
+      - uses: aws-actions/setup-sam@341eee193f458fa5aae5d52c94b0c5cf3a1c5a52 # v3
+        with:
+          version: 1.174.1
+          use-installer: true
+      - name: Validate template.yaml
+        env:
+          SAM_CLI_TELEMETRY: '0'
+        run: sam validate --lint --region us-east-1

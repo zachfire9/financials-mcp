@@ -572,9 +572,9 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 22 — Deploy with SAM and GitHub OIDC, then connect Claude
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-22-deploy-and-connect`
-- **Pull Request:** TBD
+- **Pull Request:** [#24](https://github.com/zachfire9/financials-mcp/pull/24)
 - **Concept:** Infrastructure as code, mirroring financials-api. A SAM template describes the function and its API, a GitHub Actions workflow deploys it with short-lived OIDC credentials (no stored AWS keys), and Claude connects to the resulting URL.
 - **Rust introduced:** little new Rust; how a release build gets from `cargo lambda build` into a SAM deployment in CI.
 - **Functionality:**
@@ -587,6 +587,12 @@ Every tool reports projections as a compact summary computed from the API's `Pro
     - the API URL as a stack output
   - `.github/workflows/deploy.yml`: test, `cargo deny`, build, then `sam deploy` with an OIDC role, on manual dispatch. Actions are pinned to SHAs, and real values live in repository variables and secrets, never in git.
   - `infra/iam/`: a least-privilege deploy policy and the OIDC trust policy with placeholders, plus a README, as in financials-api.
+  - As built:
+    - The API Gateway resources (Api, Integration, `ANY /mcp` Route, `$default` Stage, Permission) are written out instead of SAM `Events`. Then the function sets `MCP_ALLOWED_HOSTS` to the API's own domain without a circular dependency, so it's not a parameter.
+    - `CodeUri` is cargo-lambda's `bootstrap.zip`, with no `sam build`. `deploy.yml` runs `ci.yml` as a reusable workflow and deploys the zip artifact the CI `lambda` job uploads. CI also runs `sam validate --lint`.
+    - All deployment identifiers are GitHub secrets, because the repo's Actions logs are public. The workflow masks the endpoint and account id.
+    - IAM is scoped to `financials-mcp-McpFunctionRole-*`, so the deploy role can't edit itself.
+    - The financials-api client retries `429` up to 4 times (`THROTTLE_RETRY_DELAYS`, 3.75 s at most), since financials-api's default throttling (2/s, burst 5) is below what a batch tool sends.
   - README: deploying, rotating the bearer token, and connecting clients:
     - **Claude Code:** `claude mcp add --transport http financials https://<api-url>/mcp --header "Authorization: Bearer <token>"`.
     - **Claude (web, desktop, mobile):** a custom connector with the URL and a request header `Authorization` set to `Bearer <token>`. Request-header authentication for custom connectors is in beta and not available to every account yet. If the Request headers section is missing, use Claude Code; OAuth is listed under [Additional functionality](#additional-functionality).

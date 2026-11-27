@@ -6,6 +6,7 @@
 //! |---------------------------------------|---------------------------|----------------------------|
 //! | `400`: the API rejected the plan       | `InvalidPlan { problems }`| fix the plan               |
 //! | `401`: missing or wrong access token   | `Auth`                    | fix `FINANCIALS_ACCESS_TOKEN` |
+//! | `429` after every retry: throttled     | `Api { problem }`         | raise its throttling limits |
 //! | can't connect, timeout, `5xx`, other   | `Api { problem }`         | check the API / its URL     |
 //! | `200` but not a projection             | `UnexpectedResponse`      | likely a version mismatch   |
 //!
@@ -13,6 +14,11 @@
 //! custom header, which HTTP clients don't strip when following a redirect to
 //! another host), and **values are removed from API error messages** before
 //! they're passed on, just like the pre-checks.
+//!
+//! A `429` (API Gateway throttling a deployed financials-api) is retried a
+//! few times with growing pauses, because the batch tools send several
+//! projections at once and a short burst over the limit is expected. Every
+//! other status is answered immediately.
 
 use std::time::Duration;
 
@@ -35,6 +41,17 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 /// this guards against a misconfigured URL streaming something huge.
 pub const DEFAULT_MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 
+/// The pauses before each retry of a throttled (`429`) call: four retries,
+/// 3.75 seconds of waiting at most, well inside a tool call's time limit.
+/// API Gateway refills its token bucket every second, so a short wait is
+/// usually enough.
+pub const THROTTLE_RETRY_DELAYS: [Duration; 4] = [
+    Duration::from_millis(250),
+    Duration::from_millis(500),
+    Duration::from_secs(1),
+    Duration::from_secs(2),
+];
+
 /// Prefix financials-api puts on validation errors.
 const VALIDATION_PREFIX: &str = "invalid projection request: ";
 
@@ -49,6 +66,10 @@ pub struct ApiProjector {
     access_token: Option<HeaderValue>,
     timeout: Duration,
     max_response_bytes: usize,
+    /// A slice borrowed for the whole program (`'static`): the constant
+    /// above, or tests' shorter pauses. No allocation, and `Clone` just
+    /// copies the reference.
+    retry_delays: &'static [Duration],
 }
 
 impl ApiProjector {
@@ -100,7 +121,45 @@ impl ApiProjector {
             access_token,
             timeout,
             max_response_bytes,
+            retry_delays: &THROTTLE_RETRY_DELAYS,
         })
+    }
+
+    /// Replaces the pauses between `429` retries (tests use milliseconds).
+    #[cfg(test)]
+    fn with_retry_delays(mut self, delays: &'static [Duration]) -> ApiProjector {
+        self.retry_delays = delays;
+        self
+    }
+
+    /// Sends the plan once and reads the whole (size-limited) response.
+    async fn send(&self, plan_json: &str) -> Result<(StatusCode, Vec<u8>), Error> {
+        let mut request = self
+            .client
+            .post(&self.projections_url)
+            .header(CONTENT_TYPE, "application/json")
+            .header(
+                USER_AGENT,
+                concat!("financials-mcp/", env!("CARGO_PKG_VERSION")),
+            )
+            // `to_owned` copies the JSON: reqwest takes ownership of the body,
+            // and each retry needs its own copy.
+            .body(plan_json.to_owned());
+        // `if let Some(token) = &self.access_token` borrows the token only when
+        // one is configured; otherwise no header is sent at all.
+        if let Some(token) = &self.access_token {
+            request = request.header(ACCESS_TOKEN_HEADER, token.clone());
+        }
+
+        // The first `.await`: the task pauses here until the response headers
+        // arrive (or the timeout fires), and tokio runs other work meanwhile.
+        let response = request
+            .send()
+            .await
+            .map_err(|err| self.transport_error(&err))?;
+        let status = response.status();
+        let body = self.read_limited(response).await?;
+        Ok((status, body))
     }
 
     /// Reads the response body, refusing to buffer more than the limit.
@@ -146,29 +205,34 @@ impl ApiProjector {
 
 impl Projector for ApiProjector {
     async fn project(&self, plan: &Plan) -> Result<Projection, Error> {
-        let mut request = self
-            .client
-            .post(&self.projections_url)
-            .header(CONTENT_TYPE, "application/json")
-            .header(
-                USER_AGENT,
-                concat!("financials-mcp/", env!("CARGO_PKG_VERSION")),
-            )
-            .body(plan.to_json());
-        // `if let Some(token) = &self.access_token` borrows the token only when
-        // one is configured; otherwise no header is sent at all.
-        if let Some(token) = &self.access_token {
-            request = request.header(ACCESS_TOKEN_HEADER, token.clone());
-        }
-
-        // The first `.await`: the task pauses here until the response headers
-        // arrive (or the timeout fires), and tokio runs other work meanwhile.
-        let response = request
-            .send()
-            .await
-            .map_err(|err| self.transport_error(&err))?;
-        let status = response.status();
-        let body = self.read_limited(response).await?;
+        let plan_json = plan.to_json();
+        // An iterator over the pauses: each `next()` hands out the next one,
+        // and `None` once they're used up. The loop ends with a `return`.
+        let mut pauses = self.retry_delays.iter();
+        let (status, body) = loop {
+            let (status, body) = self.send(&plan_json).await?;
+            if status != StatusCode::TOO_MANY_REQUESTS {
+                // `break value` ends the loop, and the loop evaluates to it.
+                break (status, body);
+            }
+            match pauses.next() {
+                Some(pause) => {
+                    tracing::debug!(
+                        pause_ms = pause.as_millis() as u64,
+                        "financials-api throttled; retrying"
+                    );
+                    tokio::time::sleep(*pause).await;
+                }
+                None => {
+                    return Err(Error::Api {
+                        problem: format!(
+                            "financials-api is throttling requests (status 429) and still was after {} retries; try fewer values at once, or raise its throttling limits",
+                            self.retry_delays.len()
+                        ),
+                    });
+                }
+            }
+        };
 
         // `match` on the status code. `StatusCode::OK` etc. are constants, and
         // the `status if status.is_server_error()` arm is a guard.
@@ -394,6 +458,69 @@ mod tests {
         assert!(matches!(err, Error::Auth), "{err:?}");
         assert!(!err.to_string().contains("secret-token-xyz"));
         assert!(!format!("{err:?}").contains("secret-token-xyz"));
+    }
+
+    /// Pauses short enough for tests; the pattern is the real one.
+    const FAST_RETRIES: [Duration; 4] = [Duration::from_millis(1); 4];
+
+    #[tokio::test]
+    async fn a_throttled_call_is_retried_until_it_succeeds() {
+        let server = MockServer::start().await;
+        // Wiremock tries mocks in the order they were mounted: the first
+        // answers `429` twice, then steps aside for the second.
+        Mock::given(method("POST"))
+            .and(path("/projections"))
+            .respond_with(ResponseTemplate::new(429))
+            .up_to_n_times(2)
+            .expect(2)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/projections"))
+            .and(body_string(plan().to_json()))
+            .respond_with(ResponseTemplate::new(200).set_body_string(PROJECTION))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let api = ApiProjector::new(&config(&server.uri(), None))
+            .unwrap()
+            .with_retry_delays(&FAST_RETRIES);
+
+        let projection = api.project(&plan()).await.unwrap();
+
+        assert_eq!(summarize(&projection).unwrap().depletion_year, Some(36));
+    }
+
+    #[tokio::test]
+    async fn throttling_that_never_lets_up_is_an_api_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/projections"))
+            .respond_with(ResponseTemplate::new(429))
+            // The first try plus one per pause, then it gives up.
+            .expect(1 + FAST_RETRIES.len() as u64)
+            .mount(&server)
+            .await;
+        let api = ApiProjector::new(&config(&server.uri(), None))
+            .unwrap()
+            .with_retry_delays(&FAST_RETRIES);
+
+        let err = api.project(&plan()).await.unwrap_err();
+
+        assert!(matches!(err, Error::Api { .. }), "{err:?}");
+        assert!(
+            err.to_string().contains("throttling requests (status 429)"),
+            "{err}"
+        );
+        assert!(err.to_string().contains("after 4 retries"), "{err}");
+    }
+
+    #[test]
+    fn throttle_retries_fit_well_inside_a_tool_call() {
+        // A batch's slowest projection may wait out every pause. Keeping that
+        // under a quarter of the limit leaves the rest for the calls themselves.
+        let waiting: Duration = THROTTLE_RETRY_DELAYS.iter().sum();
+        assert!(waiting * 4 < crate::server::TOOL_TIME_LIMIT, "{waiting:?}");
     }
 
     #[tokio::test]

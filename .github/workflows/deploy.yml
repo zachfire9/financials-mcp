@@ -1,0 +1,146 @@
+name: Deploy
+
+# Run by hand: Actions → Deploy → Run workflow (on main). Not on every push,
+# so merging a PR never changes what's running until you choose to.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time; a second run waits rather than racing the first.
+concurrency:
+  group: financials-mcp-deploy
+  cancel-in-progress: false
+
+# Settings. This repo is public, and so are its Actions logs: anything that
+# identifies the deployment is a secret (masked as *** in logs), not a
+# variable. See README: Deploying to AWS.
+#   secrets: AWS_DEPLOY_ROLE_ARN, MCP_BEARER_TOKEN, FINANCIALS_API_URL,
+#            FINANCIALS_ACCESS_TOKEN (optional)
+#   variables (all optional): AWS_REGION, MCP_STACK_NAME,
+#            MCP_THROTTLING_RATE_LIMIT, MCP_THROTTLING_BURST_LIMIT,
+#            MCP_RESERVED_CONCURRENCY
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  MCP_STACK_NAME: ${{ vars.MCP_STACK_NAME || 'financials-mcp' }}
+  MCP_THROTTLING_RATE_LIMIT: ${{ vars.MCP_THROTTLING_RATE_LIMIT || '2' }}
+  MCP_THROTTLING_BURST_LIMIT: ${{ vars.MCP_THROTTLING_BURST_LIMIT || '5' }}
+  MCP_RESERVED_CONCURRENCY: ${{ vars.MCP_RESERVED_CONCURRENCY }}
+  SAM_CLI_TELEMETRY: '0'
+
+jobs:
+  # All of CI: fmt, clippy and tests (Linux and Windows), cargo deny, the
+  # template check, and the arm64 Lambda build, which uploads bootstrap.zip.
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    # The IAM trust policy only accepts main; this makes the reason obvious
+    # instead of an AssumeRole error.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Lets the job ask GitHub for an OIDC token, which AWS trades for
+      # short-lived credentials. No AWS keys are stored anywhere.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The exact zip CI built and checked, where template.yaml's CodeUri
+      # expects it.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: lambda-bootstrap
+          path: target/lambda/lambda
+      - uses: aws-actions/setup-sam@341eee193f458fa5aae5d52c94b0c5cf3a1c5a52 # v3
+        with:
+          version: 1.174.1
+          use-installer: true
+      - uses: aws-actions/configure-aws-credentials@45666896f5d8e0f10ae255413f3a4cdd03bdc8f5 # v6.3.1
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      # sam deploy prints the stack's outputs and resource ids. Masking the
+      # URL and API id first keeps them out of the log on every deploy after
+      # the first (before the first, there's nothing to look up yet).
+      - name: Mask the existing endpoint
+        run: |
+          url=$(aws cloudformation describe-stacks --stack-name "$MCP_STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='McpUrl'].OutputValue | [0]" \
+            --output text 2>/dev/null || true)
+          if [ -n "$url" ] && [ "$url" != "None" ]; then
+            echo "::add-mask::$url"
+            host=${url#https://}; host=${host%%/*}
+            echo "::add-mask::$host"
+            echo "::add-mask::${host%%.*}"
+          fi
+
+      - name: Deploy
+        env:
+          MCP_BEARER_TOKEN: ${{ secrets.MCP_BEARER_TOKEN }}
+          FINANCIALS_API_URL: ${{ secrets.FINANCIALS_API_URL }}
+          FINANCIALS_ACCESS_TOKEN: ${{ secrets.FINANCIALS_ACCESS_TOKEN }}
+        run: |
+          # sam rejects an empty "Key=" override, so optional parameters are
+          # passed only when they have a value.
+          params=(
+            "McpBearerToken=$MCP_BEARER_TOKEN"
+            "FinancialsApiUrl=$FINANCIALS_API_URL"
+            "McpThrottlingRateLimit=$MCP_THROTTLING_RATE_LIMIT"
+            "McpThrottlingBurstLimit=$MCP_THROTTLING_BURST_LIMIT"
+          )
+          if [ -n "$FINANCIALS_ACCESS_TOKEN" ]; then
+            params+=("FinancialsAccessToken=$FINANCIALS_ACCESS_TOKEN")
+          fi
+          if [ -n "$MCP_RESERVED_CONCURRENCY" ]; then
+            params+=("McpReservedConcurrency=$MCP_RESERVED_CONCURRENCY")
+          fi
+          # No `sam build`: CodeUri already points at the built zip, and
+          # sam deploy uploads it to SAM's artifact bucket as is.
+          sam deploy \
+            --template-file template.yaml \
+            --stack-name "$MCP_STACK_NAME" \
+            --region "$AWS_REGION" \
+            --capabilities CAPABILITY_IAM \
+            --resolve-s3 \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides "${params[@]}"
+
+      # The deployed endpoint refuses a request without the token and, with
+      # it, lists the five tools.
+      - name: Smoke test
+        env:
+          MCP_BEARER_TOKEN: ${{ secrets.MCP_BEARER_TOKEN }}
+        run: |
+          url=$(aws cloudformation describe-stacks --stack-name "$MCP_STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='McpUrl'].OutputValue | [0]" --output text)
+          echo "::add-mask::$url"
+          list='{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+          status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$url" \
+            -H 'content-type: application/json' \
+            -H 'accept: application/json, text/event-stream' \
+            --data "$list")
+          echo "without the token: $status"
+          [ "$status" = 401 ]
+
+          # The token goes in a header file (readable only by this user)
+          # rather than on curl's command line, where other processes on the
+          # machine could see it.
+          auth="$RUNNER_TEMP/auth-header"
+          (umask 077; printf 'Authorization: Bearer %s\n' "$MCP_BEARER_TOKEN" > "$auth")
+          tools=$(curl -sS --fail-with-body -X POST "$url" \
+            -H @"$auth" \
+            -H 'content-type: application/json' \
+            -H 'accept: application/json, text/event-stream' \
+            --data "$list" | jq '.result.tools | length')
+          rm -f "$auth"
+          echo "with the token: $tools tools"
+          [ "$tools" = 5 ]
