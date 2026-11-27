@@ -298,7 +298,7 @@ To follow along, read each step's files in order. Explanations of Rust concepts 
 
 ### Step 20: Bearer-token auth and request limits
 
-PR_LINK
+[PR #22](https://github.com/zachfire9/financials-mcp/pull/22)
 
 - **Built:** the lock that must be in place before the server leaves your machine.
   - `serve --http` needs `MCP_BEARER_TOKEN` (32+ characters) to start.

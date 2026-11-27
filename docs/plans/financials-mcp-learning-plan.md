@@ -531,7 +531,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-20-http-auth-and-limits`
-- **Pull Request:** PR_LINK
+- **Pull Request:** [#22](https://github.com/zachfire9/financials-mcp/pull/22)
 - **Concept:** A URL anyone can reach needs a lock. Before the server leaves your machine, every HTTP request must carry a long secret, and size and time limits cap what any one request can cost.
 - **Rust introduced:** tower middleware (layers that wrap a service), constant-time comparison (`subtle::ConstantTimeEq`) and why `==` on secrets leaks timing, reusing Step 04's redacted secret newtype, `tokio::time::timeout`, and paused time in tests (`tokio::time::pause`).
 - **Functionality:**
