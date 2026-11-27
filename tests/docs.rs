@@ -313,15 +313,18 @@ fn every_source_file_is_in_the_layout_and_the_module_table() {
         names
     };
 
-    for name in rust_files("src") {
-        assert!(
-            readme.contains(&name),
-            "README's layout is missing src/{name}"
-        );
-        assert!(
-            architecture.contains(&format!("(../src/{name})")),
-            "docs/architecture.md's module table is missing src/{name}"
-        );
+    // Library modules in `src/`, and extra executables in `src/bin/`.
+    for dir in ["src", "src/bin"] {
+        for name in rust_files(dir) {
+            assert!(
+                readme.contains(&name),
+                "README's layout is missing {dir}/{name}"
+            );
+            assert!(
+                architecture.contains(&format!("(../{dir}/{name})")),
+                "docs/architecture.md's module table is missing {dir}/{name}"
+            );
+        }
     }
     for name in rust_files("tests") {
         assert!(

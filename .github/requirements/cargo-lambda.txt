@@ -1,0 +1,9 @@
+# cargo-lambda, for building the AWS Lambda binary in CI (Step 21), with the
+# Zig toolchain it uses to cross-compile. Installed with
+# `pip install --require-hashes`, so pip refuses any file whose SHA-256
+# doesn't match. Hashes are PyPI's published ones for the Linux x86_64
+# wheels. Dependabot (pip) proposes updates with new hashes.
+cargo-lambda==1.9.2 \
+    --hash=sha256:db2c0b1d53d7ed0055198fd045f641addc91b180b20d794fcf78cc9a9efacb38
+ziglang==0.17.1 \
+    --hash=sha256:ea6cc5d87b033cf0aedfbc8f9549a908cae6c50ac31f1698188fa48a74524b54

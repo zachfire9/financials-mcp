@@ -26,6 +26,9 @@ Topics:
 | `rust-version` and the version-aware resolver | `Cargo.toml` (Step 9: Cargo picked rmcp 2.2 for Rust 1.85) | Go's `go` directive; no direct Python equivalent |
 | Features (optional parts of a crate) | `tracing-subscriber` with `default-features = false` ([`Cargo.toml`](../Cargo.toml)) | Go build tags, roughly; pip "extras" |
 | Your own features and `#[cfg(feature = "…")]` | The `http` feature in [`Cargo.toml`](../Cargo.toml); `#[cfg(feature = "http")] pub mod http;` in [`lib.rs`](../src/lib.rs), and on CLI fields and match arms (Step 19) | Go build tags (`//go:build`); a feature flag, but decided at compile time |
+| Several binaries in one package | `src/main.rs` plus `src/bin/lambda.rs`, declared with `[[bin]]` and `required-features = ["lambda"]` in [`Cargo.toml`](../Cargo.toml) (Step 21) | Several `cmd/<name>/main.go` in one module; several console scripts |
+| Release profiles | `[profile.release]` with `lto`, `codegen-units = 1` and `strip` in [`Cargo.toml`](../Cargo.toml): 10.4 MB → 9.5 MB (Step 21) | `go build -ldflags="-s -w"` |
+| Cross-compiling for another CPU and OS | `cargo lambda build --arm64`: the `aarch64-unknown-linux-gnu` target, linked with Zig against an old glibc (Step 21) | `GOOS=linux GOARCH=arm64 go build` (easier, since Go needs no C linker by default) |
 | Several major versions of one crate at once | `syn` 2 and 3 in the tree (Step 17) | Go allows one version per module |
 | Build scripts and proc macros run at compile time | `aws-lc-sys` (`build.rs`), `serde_derive` | `go generate`, but automatic |
 
@@ -110,6 +113,7 @@ Topics:
 |---|---|---|
 | `async fn`, futures and `.await` | [`projector.rs`](../src/projector.rs), [`api.rs`](../src/api.rs) (Step 6) | Python `async`/`await`; Go hides this behind goroutines |
 | The tokio runtime, `#[tokio::main]` | [`main.rs`](../src/main.rs) (`current_thread`) | `asyncio.run`; the Go runtime |
+| Work once per process versus per request | `lambda::run` builds the router before `lambda_http::run` loops over events ([`lambda.rs`](../src/lambda.rs), Step 21) | Package-level setup in a Go Lambda handler; module-level setup in Python |
 | `tokio::spawn`, `JoinSet` | `project_all` ([`batch.rs`](../src/batch.rs), Step 11) | Goroutines with an `errgroup`; `asyncio.as_completed` |
 | `Semaphore` for a concurrency limit | `project_all` (4 at a time) | A buffered channel; `asyncio.Semaphore` |
 | Graceful shutdown with any future | `http::serve(…, shutdown: impl Future)`; Ctrl+C via `tokio::signal::ctrl_c`, `std::future::pending` in tests ([`http.rs`](../src/http.rs)) | `http.Server.Shutdown(ctx)`; a cancelled `asyncio` task |

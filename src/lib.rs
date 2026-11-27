@@ -22,7 +22,8 @@
 //! - [`error`]: every failure, with messages that never quote plan values;
 //!   [`cli`]: the command line, including the `project` debug command.
 //! - `http`: the Streamable HTTP transport for `serve --http` (with the
-//!   default `http` feature).
+//!   default `http` feature); `lambda`: the same server on AWS Lambda (with
+//!   the `lambda` feature).
 
 // `pub mod plan;` declares a module and tells the compiler to load it from
 // `src/plan.rs`. Unlike Go (every file in a folder is one package) or Python
@@ -40,6 +41,9 @@ pub mod guidance;
 // module, axum and rmcp's HTTP transport aren't built at all.
 #[cfg(feature = "http")]
 pub mod http;
+// The Lambda entry point (the `lambda` feature, off by default).
+#[cfg(feature = "lambda")]
+pub mod lambda;
 pub mod logging;
 pub mod max_spending;
 pub mod overrides;
