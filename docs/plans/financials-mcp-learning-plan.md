@@ -552,9 +552,9 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 21 — Lambda packaging with cargo-lambda
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-21-lambda-packaging`
-- **Pull Request:** TBD
+- **Pull Request:** [#23](https://github.com/zachfire9/financials-mcp/pull/23)
 - **Concept:** Lambda runs a function per request, with no long-lived server process. The tower service from Steps 19–20 plugs into Lambda through an adapter, so the tools, auth and limits are identical to local HTTP.
 - **Rust introduced:** `lambda_http` (API Gateway events as ordinary `http` requests), work done once per cold start versus per request, a second binary (`src/bin/lambda.rs`) behind a `lambda` feature, cross-compiling to `aarch64` with `cargo-lambda`, and release-profile settings (`lto`, `strip`) for size and cold-start time.
 - **Functionality:**
@@ -562,6 +562,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
   - Logs go to CloudWatch under the same rules as Step 16.
   - `cargo lambda build --release --arm64 --bin lambda` produces the `bootstrap` executable for `provided.al2023`.
   - CI builds the Lambda artifact so packaging breakage is caught early, and `cargo deny` covers the new crates.
+  - As built: `lambda_http` 1.3.2 with only `apigw_http`; cargo-lambda in CI from hash-pinned PyPI wheels (`.github/requirements/cargo-lambda.txt`, updated by Dependabot); CI checks the binary is arm64 and needs glibc ≤ 2.34; `deny.toml` now checks all features, so the `lambda` dependencies are covered.
 - **Tests:**
   - Handler tests with synthetic API Gateway HTTP API (v2) events: `initialize` and `tools/call` succeed with the right token; no token gets `401`; an oversized body is rejected.
   - The shared tool tests pass through the Lambda adapter too.

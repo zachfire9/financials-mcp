@@ -16,6 +16,7 @@ publish = false
 [dependencies]
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"], optional = true }
 clap = { version = "4.6.8", features = ["derive"] }
+lambda_http = { version = "1.3.2", default-features = false, features = ["apigw_http"], optional = true }
 reqwest = "0.13.5"
 rmcp = { version = "3.11.0", features = ["server", "macros", "transport-io"] }
 schemars = "1"
@@ -42,3 +43,28 @@ default = ["http"]
 # `serve --http`: MCP over Streamable HTTP (Step 19). Turns on the axum
 # dependency and rmcp's HTTP server transport.
 http = ["dep:axum", "rmcp/transport-streamable-http-server", "tokio/net", "tokio/signal"]
+# The AWS Lambda binary (Step 21): the HTTP server, driven by Lambda events
+# instead of a listening socket. Off by default: only the Lambda build needs
+# `lambda_http` and its dependencies.
+lambda = ["http", "dep:lambda_http"]
+
+# A second executable, `lambda`, next to the main `financials-mcp` one.
+# `required-features` means plain `cargo build` skips it; build it with
+# `cargo build --features lambda --bin lambda` (or cargo-lambda, below).
+[[bin]]
+name = "lambda"
+path = "src/bin/lambda.rs"
+required-features = ["lambda"]
+
+# Settings for `--release` builds (the Lambda binary and `cargo build
+# --release`). Smaller, faster binaries in exchange for slower builds: a
+# smaller binary means a faster Lambda cold start.
+[profile.release]
+# Link-time optimization: optimize across crates, not just within each one.
+lto = true
+# One unit per crate, so the optimizer sees all of it at once.
+codegen-units = 1
+# Drop debug symbols from the binary.
+strip = true
+# Not `panic = "abort"`: batch tools rely on a panicking task being caught
+# (`JoinSet` reports it as an error row) rather than ending the process.

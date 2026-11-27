@@ -17,3 +17,6 @@ financials-backup-*.json
 .DS_Store
 .vscode/
 .idea/
+
+# Settings for `cargo lambda watch` (holds MCP_BEARER_TOKEN).
+lambda.env

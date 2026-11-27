@@ -34,7 +34,8 @@ To follow along, read each step's files in order. Explanations of Rust concepts 
   [docs](#step-18-learning-walkthrough)
 - **Going online (19–22):**
   [HTTP transport](#step-19-streamable-http-transport) ·
-  [auth and limits](#step-20-bearer-token-auth-and-request-limits)
+  [auth and limits](#step-20-bearer-token-auth-and-request-limits) ·
+  [Lambda](#step-21-lambda-packaging)
 
 ---
 
@@ -314,6 +315,25 @@ To follow along, read each step's files in order. Explanations of Rust concepts 
   - [`cfg_attr` on doc comments](rust-concepts.md#macros-and-attributes)
 - **Lesson:** rmcp already had a body limit (`with_max_request_body_bytes`, 4 MiB by default), so the 1 MiB cap is one builder call rather than another layer of middleware.
 
+### Step 21: Lambda packaging
+
+[PR #23](https://github.com/zachfire9/financials-mcp/pull/23)
+
+- **Built:** a second executable, `lambda`, that runs the same locked router on AWS Lambda through `lambda_http`.
+  - It's behind a `lambda` Cargo feature, off by default.
+  - It's built for arm64 with cargo-lambda, as a 9.5 MB `bootstrap` (3.9 MB zipped).
+  - A release profile adds link-time optimization (LTO) and stripping.
+  - CI builds the arm64 binary and checks its glibc needs.
+- **Look at:** [`src/lambda.rs`](../src/lambda.rs) (and its API Gateway event tests), [`src/bin/lambda.rs`](../src/bin/lambda.rs), and the `[[bin]]`, `lambda` feature and `[profile.release]` sections of [`Cargo.toml`](../Cargo.toml).
+- **Rust:**
+  - [several binaries in one package](rust-concepts.md#modules-crates-and-cargo) (`[[bin]]` with `required-features`)
+  - [release profiles](rust-concepts.md#modules-crates-and-cargo)
+  - [cross-compiling](rust-concepts.md#modules-crates-and-cargo)
+  - cold-start work versus per-request work
+- **Lessons:**
+  - `deny.toml` had `all-features = false`, so cargo-deny had never checked dependencies behind optional features. It does now, and `lambda_http` passes.
+  - Linking against an old glibc is why cargo-lambda uses Zig. The binary needs glibc 2.30, and Lambda's `provided.al2023` has 2.34. A plain `cargo build` on a newer Linux would need that machine's newer glibc.
+
 ## What's next
 
-Steps 21–22 package the server for AWS Lambda and deploy it with SAM, so Claude can use the tools from any device. See the [plan](plans/financials-mcp-learning-plan.md#step-21--lambda-packaging-with-cargo-lambda).
+Step 22 deploys the Lambda with SAM and GitHub OIDC and connects Claude to it, so the tools work from any device. See the [plan](plans/financials-mcp-learning-plan.md#step-22--deploy-with-sam-and-github-oidc-then-connect-claude).

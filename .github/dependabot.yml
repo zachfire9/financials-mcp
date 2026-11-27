@@ -17,3 +17,8 @@ updates:
         update-types:
           - minor
           - patch
+  # cargo-lambda (and Zig) for the Lambda build in CI, pinned with hashes.
+  - package-ecosystem: pip
+    directory: /.github/requirements
+    schedule:
+      interval: weekly

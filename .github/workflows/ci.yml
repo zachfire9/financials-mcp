@@ -38,6 +38,9 @@ jobs:
       # smaller build keeps compiling and passing.
       - run: cargo clippy --all-targets --locked --no-default-features -- -D warnings
       - run: cargo test --locked --no-default-features
+      # And with every feature, including the Lambda binary's.
+      - run: cargo clippy --all-targets --locked --all-features -- -D warnings
+      - run: cargo test --locked --all-features
 
   # Dependency policy (deny.toml): advisories, licenses, banned crates and
   # sources. Linux only: the check covers every platform's dependencies.
@@ -64,3 +67,40 @@ jobs:
           install -m 0755 "${name}/cargo-deny" "${HOME}/.cargo/bin/cargo-deny"
           cargo deny --version
       - run: cargo deny --locked check
+
+  # The AWS Lambda binary, built the way it will be deployed: for arm64
+  # (Graviton) with cargo-lambda, which cross-compiles with Zig and links
+  # against an old glibc so the binary runs on Lambda's provided.al2023.
+  lambda:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust (stable) with the arm64 target
+        run: |
+          rustup toolchain install stable --profile minimal --target aarch64-unknown-linux-gnu
+          rustup default stable
+      # cargo-lambda and Zig from PyPI, into a fresh virtual environment, with
+      # every file's SHA-256 checked against .github/requirements.
+      - name: Install cargo-lambda
+        run: |
+          python3 -m venv "$RUNNER_TEMP/cargo-lambda"
+          "$RUNNER_TEMP/cargo-lambda/bin/pip" install --require-hashes --only-binary=:all: \
+            -r .github/requirements/cargo-lambda.txt
+          echo "$RUNNER_TEMP/cargo-lambda/bin" >> "$GITHUB_PATH"
+      - name: Build the Lambda binary (arm64)
+        run: cargo lambda build --release --arm64 --locked --features lambda --bin lambda --output-format zip
+      # Check the zip that would be deployed: its `bootstrap` must be an arm64
+      # binary that Lambda's runtime can load.
+      - name: Check the binary
+        run: |
+          unzip -o -q target/lambda/lambda/bootstrap.zip -d "$RUNNER_TEMP/lambda"
+          bootstrap="$RUNNER_TEMP/lambda/bootstrap"
+          file "$bootstrap" | tee /dev/stderr | grep -q 'ARM aarch64'
+          # The newest glibc symbol version it needs. Lambda's provided.al2023
+          # runtime has glibc 2.34, so nothing newer may appear.
+          newest=$(readelf --dyn-syms --wide "$bootstrap" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)
+          echo "needs glibc $newest (provided.al2023 has 2.34)"
+          [ "$(printf '%s\n2.34\n' "$newest" | sort -V | tail -1)" = "2.34" ]
+          ls -l target/lambda/lambda/

@@ -18,7 +18,7 @@ This is also a **learning project**, built one reviewable step at a time as a fi
 
 ## Status
 
-Steps 1–20 are complete: five tools over stdio for Claude Desktop and Claude Code, and over HTTP (`serve --http`) with a required bearer token, an allowed-hosts list and request limits.
+Steps 1–21 are complete: five tools over stdio for Claude Desktop and Claude Code, over HTTP (`serve --http`) with a required bearer token, an allowed-hosts list and request limits, and the same HTTP server packaged as an AWS Lambda binary.
 
 | Tool | Answers |
 |---|---|
@@ -28,7 +28,7 @@ Steps 1–20 are complete: five tools over stdio for Claude Desktop and Claude C
 | `find_max_spending` | "What's the most we can spend and still have $200k left?" |
 | `withdrawal_order_options` | "Which account should we draw from first?" |
 
-**Next:** Steps 21–22 package the HTTP server for AWS Lambda and deploy it, so Claude can use the tools from any device. See the [plan](docs/plans/financials-mcp-learning-plan.md#step-21--lambda-packaging-with-cargo-lambda).
+**Next:** Step 22 deploys the Lambda with SAM and GitHub OIDC and connects Claude to it, so the tools work from any device. See the [plan](docs/plans/financials-mcp-learning-plan.md#step-22--deploy-with-sam-and-github-oidc-then-connect-claude).
 
 ## Requirements
 
@@ -129,6 +129,24 @@ claude mcp add --transport http financials-http http://127.0.0.1:8787/mcp --head
 
 Ctrl+C stops it after requests in progress finish. Steps 21–22 host the same server on AWS Lambda.
 
+### On AWS Lambda
+
+The `lambda` binary (`src/bin/lambda.rs`, behind the `lambda` Cargo feature) runs the same locked HTTP server on AWS Lambda. [`lambda_http`](https://crates.io/crates/lambda_http) turns each API Gateway HTTP API event into an ordinary HTTP request for it. The tools, token check, allowed hosts and limits are identical to `serve --http`. Step 22 deploys it. To build it yourself, install [cargo-lambda](https://www.cargo-lambda.info) (`pip install cargo-lambda`, which includes the Zig toolchain it cross-compiles with), then:
+
+```powershell
+cargo lambda build --release --arm64 --features lambda --bin lambda --output-format zip
+# -> target/lambda/lambda/bootstrap.zip, for the provided.al2023 runtime on arm64 (Graviton)
+```
+
+To try it locally, run it under cargo-lambda's emulator and call it like a Lambda function URL. Put the settings in an env file, with values in quotes:
+
+```powershell
+cargo lambda watch --features lambda --bin lambda --env-file lambda.env   # MCP_BEARER_TOKEN, FINANCIALS_API_URL, MCP_ALLOWED_HOSTS="localhost:9000"
+# then POST MCP requests to http://localhost:9000/lambda-url/lambda/mcp with the bearer token
+```
+
+The Lambda reads the same settings as `serve --http` from its environment variables. Set `MCP_ALLOWED_HOSTS` to the API's domain. CI builds the arm64 binary on every push and checks that it needs no newer glibc than Lambda's runtime has (2.34).
+
 Then attach or paste a plan (the financials-api `POST /projections` request body) and ask, for example:
 
 - *"Run a projection for this plan and tell me whether the money lasts."*
@@ -159,12 +177,13 @@ The model is told to ask what you're optimizing for, to use the tools for every 
 cargo run                                   # build and run the binary (prints a banner)
 cargo test                                  # unit + integration tests
 cargo test --no-default-features            # the same, built without the HTTP transport
+cargo test --all-features                   # the same, with the Lambda binary's code too
 cargo fmt --check                           # formatting
 cargo clippy --all-targets -- -D warnings   # lints, warnings fail
 cargo deny check                            # dependency policy (deny.toml)
 ```
 
-CI runs fmt, clippy and the tests on every push and pull request, on Linux and Windows, with and without default features, plus `cargo deny check` on Linux. It also runs weekly, so a newly published advisory shows up even when nothing changed. Install cargo-deny with `cargo install cargo-deny --locked`.
+CI runs fmt, clippy and the tests on every push and pull request, on Linux and Windows, with default features, none and all, plus `cargo deny check` and an arm64 Lambda build on Linux. It also runs weekly, so a newly published advisory shows up even when nothing changed. Install cargo-deny with `cargo install cargo-deny --locked`.
 
 ## Dependencies
 
@@ -187,6 +206,9 @@ financials-mcp/
     server.rs           # the MCP server: five tools, results, errors as tool results
     guidance.rs         # instructions sent to the model
     http.rs             # `serve --http`: the Streamable HTTP transport (the `http` feature)
+    lambda.rs           # the same server on AWS Lambda (the `lambda` feature)
+    bin/
+      lambda.rs         # the Lambda executable (`bootstrap` once built)
     logging.rs          # stderr logging, a projection counter, no plan contents
     plan.rs             # the plan (API request) types, parsing and pre-checks
     overrides.rs        # "what if" changes applied to a copy of a plan
@@ -211,6 +233,7 @@ financials-mcp/
     fixtures/           # made-up plans and real API responses for them
   docs/                 # walkthrough, architecture, Rust concepts, tools, plan
   deny.toml             # dependency policy
+  .github/requirements/ # hash-pinned cargo-lambda for the CI Lambda build
   Cargo.toml / Cargo.lock
 ```
 

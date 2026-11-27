@@ -18,7 +18,8 @@ You ──► Claude (Desktop or Code) ──MCP over stdio──► financials-
 There are two transports, carrying the same JSON-RPC messages to the same server:
 
 - **stdio:** the client starts `financials-mcp serve` as a child process and exchanges messages over its stdin and stdout, one per line. That's why nothing else may ever be printed to stdout while serving, and why logs go to stderr.
-- **Streamable HTTP** (`serve --http`, in [`http.rs`](../src/http.rs)): each message is a `POST /mcp`, answered with JSON. It's stateless: no sessions, and each request is handled by a fresh clone of the server (sharing one projector). rmcp provides the transport as a `tower::Service`, and axum routes requests to it. It's locked: every request needs `Authorization: Bearer <MCP_BEARER_TOKEN>` (checked in constant time by middleware, before the body is read), the `Host` header must be on the allowed list, and bodies are capped at 1 MiB. Steps 21–22 host it on AWS Lambda.
+- **Streamable HTTP** (`serve --http`, in [`http.rs`](../src/http.rs)): each message is a `POST /mcp`, answered with JSON. It's stateless: no sessions, and each request is handled by a fresh clone of the server (sharing one projector). rmcp provides the transport as a `tower::Service`, and axum routes requests to it. It's locked: every request needs `Authorization: Bearer <MCP_BEARER_TOKEN>` (checked in constant time by middleware, before the body is read), the `Host` header must be on the allowed list, and bodies are capped at 1 MiB.
+- **AWS Lambda** (the `lambda` binary, in [`lambda.rs`](../src/lambda.rs)): the same router, driven by Lambda events instead of a listening socket. `lambda_http` turns each API Gateway HTTP API event into an `http::Request` and the response back into an event reply, so the tools, token check, allowed hosts and limits are identical. Step 22 deploys it.
 
 ## Modules
 
@@ -28,6 +29,8 @@ There are two transports, carrying the same JSON-RPC messages to the same server
 | [`main.rs`](../src/main.rs) | The executable: parses the command line, installs logging for `serve`, runs a command, turns errors into exit codes |
 | [`server.rs`](../src/server.rs) | The MCP server: the five tools, their arguments and results, and turning errors into tool results |
 | [`guidance.rs`](../src/guidance.rs) | The instructions sent to the model at `initialize` |
+| [`lambda.rs`](../src/lambda.rs) | The Lambda entry point: builds the locked router once per cold start and hands it to `lambda_http::run` (behind the `lambda` feature) |
+| [`bin/lambda.rs`](../src/bin/lambda.rs) | The Lambda executable (`bootstrap` once built with cargo-lambda), calling `lambda::run` |
 | [`http.rs`](../src/http.rs) | `serve --http`: rmcp's Streamable HTTP service in stateless mode, routed by axum, behind bearer-token middleware, with the allowed hosts, a body limit and graceful shutdown (behind the `http` feature) |
 | [`logging.rs`](../src/logging.rs) | stderr logging, the level filter, and `Counted`, a projector wrapper that counts and logs projections |
 | [`plan.rs`](../src/plan.rs) | The plan types (the API request), strict parsing, and pre-checks in the API's wording |
@@ -75,7 +78,8 @@ The other batch tools follow the same path with different preparation: `sweep` b
 - **Generic over the projector.** Every tool works with any `Projector`: `ApiProjector` in production, `FakeProjector` in tests, and `Counted<…>` wrapping either for logging. Generics are resolved at compile time, so this costs nothing at runtime.
 - **Concurrency without threads.** The server runs on tokio's single-threaded runtime, over HTTP too. Projections spend nearly all their time waiting on the network, so many requests in flight on one thread is enough.
 - **Locked before it can be hosted.** `serve --http` refuses to start without a bearer token of at least 32 characters. Middleware rejects any request without it (`401`) before rmcp reads the body. The token is compared in constant time, and rejections log a fixed reason, never the header.
-- **Optional transports are Cargo features.** The HTTP transport (and axum) is the default `http` feature. `cargo build --no-default-features` leaves it out entirely, and CI tests both builds.
+- **Optional transports are Cargo features.** The HTTP transport (and axum) is the default `http` feature. `cargo build --no-default-features` leaves it out entirely. The Lambda binary is the `lambda` feature, off by default, so only the Lambda build carries `lambda_http`. CI tests all three builds.
+- **One server, three ways in.** stdio, local HTTP and Lambda all run the same `FinancialsServer`. HTTP and Lambda also share the same router and middleware. Lambda-specific code is a few lines: read the settings, build once, `lambda_http::run`.
 
 ## How an agent uses the tools
 
@@ -132,7 +136,7 @@ The model never estimated a number: each one came from a tool. It asked about go
 
 ## Testing strategy
 
-Every behavior has a deterministic test, and **no test calls the real financials-api or a model**. There are 220 tests (188 without the `http` feature):
+Every behavior has a deterministic test, and **no test calls the real financials-api or a model**. There are 220 tests by default (188 without the `http` feature, 226 with the `lambda` feature too):
 
 | Kind | Where | What they cover |
 |---|---|---|
@@ -141,6 +145,7 @@ Every behavior has a deterministic test, and **no test calls the real financials
 | Mock HTTP server | [`wiremock`](https://crates.io/crates/wiremock) in [`api.rs`](../src/api.rs) and the logging test | The real HTTP client: status codes, timeouts, redirects, size caps, the token header, and that the token never reaches logs |
 | In-process MCP client | `server.rs` tests, over `tokio::io::duplex` **and** over HTTP on a local port | Tool listing, schemas, annotations, results and tool errors, through rmcp exactly as a client sees them. A `macro_rules!` macro runs each test once per transport |
 | HTTP transport | `http.rs` tests | The bearer token (missing, malformed, wrong, a prefix, one character too many, a case-insensitive scheme), startup without a token, the `Host` allow list, the 1 MiB limit, stateless requests, graceful shutdown with a call in progress, and logs without the token |
+| Lambda events | `lambda.rs` tests | API Gateway HTTP API (v2) event JSON parsed by `lambda_http`, through the router: tools answer, a tool call reaches a mock financials-api, no token gets `401`, a large body gets `413`, the wrong host gets `403`, no token fails startup |
 | Paused time | `#[tokio::test(start_paused = true)]` in `server.rs` | The 25-second tool limit, which passes instantly and exactly |
 | The real binary | [`tests/cli.rs`](../tests/cli.rs), [`tests/serve.rs`](../tests/serve.rs) | Exit codes and help text, raw MCP over stdio and over HTTP (`--listen 127.0.0.1:0`), nothing on stdout but protocol, logs on stderr |
 | Fixtures | [`tests/fixtures/`](../tests/fixtures) | Two made-up plans and the real financials-api responses for them |
@@ -154,5 +159,6 @@ Some tests check the tests themselves. A few were confirmed to fail when the cod
 The manual checks run against a real local financials-api and a real client: the end-to-end scripts in each PR's verification section, and Claude Desktop or Claude Code.
 
 CI runs on every push and pull request, and weekly:
-- `cargo fmt --check`, `cargo clippy -- -D warnings` and `cargo test` on Linux and Windows, with and without default features
-- `cargo deny check` for dependency advisories, licenses and sources
+- `cargo fmt --check`, `cargo clippy -- -D warnings` and `cargo test` on Linux and Windows, with default features, none and all
+- `cargo deny check` for dependency advisories, licenses and sources, across all features
+- the arm64 Lambda build with cargo-lambda (installed from hash-pinned wheels), checking the binary's architecture and that it needs no newer glibc than Lambda's runtime

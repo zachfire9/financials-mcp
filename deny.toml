@@ -13,7 +13,9 @@
 [graph]
 # Check the dependencies of every platform, not just the one running the
 # check: CI on Linux must also catch a problem in a Windows-only crate.
-all-features = false
+# `all-features = true` also includes optional features, such as `lambda`
+# (off by default), whose dependencies ship in the Lambda build.
+all-features = true
 
 [advisories]
 # Vulnerabilities always fail. Yanked versions (withdrawn by their authors)
