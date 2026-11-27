@@ -23,6 +23,10 @@ use crate::error::Error;
 pub const API_URL_VAR: &str = "FINANCIALS_API_URL";
 pub const ACCESS_TOKEN_VAR: &str = "FINANCIALS_ACCESS_TOKEN";
 pub const DEFAULT_API_URL: &str = "http://localhost:8080";
+/// The secret every request to `serve --http` must send (Step 20).
+pub const BEARER_TOKEN_VAR: &str = "MCP_BEARER_TOKEN";
+/// The `Host` header values `serve --http` accepts (Step 20).
+pub const ALLOWED_HOSTS_VAR: &str = "MCP_ALLOWED_HOSTS";
 
 /// Settings for talking to financials-api.
 ///
@@ -35,6 +39,12 @@ pub struct Config {
     pub api_url: String,
     /// The API access token, if one is configured.
     pub access_token: Option<AccessToken>,
+    /// The token HTTP clients must present, if one is configured. Only
+    /// `serve --http` uses it, and it requires it.
+    pub bearer_token: Option<BearerToken>,
+    /// Hostnames (or `host:port`) accepted in the `Host` header by
+    /// `serve --http`. `None` means loopback only.
+    pub allowed_hosts: Option<Vec<String>>,
 }
 
 /// A secret token that never shows up in output.
@@ -66,6 +76,76 @@ impl AccessToken {
 impl fmt::Debug for AccessToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("AccessToken(<redacted>)")
+    }
+}
+
+/// The secret HTTP clients send as `Authorization: Bearer <token>`.
+///
+/// The same newtype pattern as [`AccessToken`]: a private field, no
+/// `Display`, a redacting `Debug`, and [`BearerToken::matches`] instead of
+/// `==`, so the comparison is always the constant-time one.
+#[derive(Clone)]
+pub struct BearerToken(String);
+
+impl BearerToken {
+    /// Shortest token accepted: 32 characters (for example, 24 random bytes
+    /// in base64), far too many to guess.
+    pub const MIN_LEN: usize = 32;
+
+    /// Checks the rules a token must meet, for `serve --http`.
+    pub fn check(&self) -> Result<(), Error> {
+        let invalid = |problem: &str| Error::Config {
+            problem: format!("{BEARER_TOKEN_VAR} {problem}"),
+        };
+        if self.0.len() < Self::MIN_LEN {
+            return Err(invalid(&format!(
+                "must be at least {} characters; generate a random one (see the README)",
+                Self::MIN_LEN
+            )));
+        }
+        // `is_ascii_graphic` is printable ASCII without spaces: what fits in
+        // an HTTP header unchanged.
+        if !self.0.bytes().all(|byte| byte.is_ascii_graphic()) {
+            return Err(invalid(
+                "must be printable ASCII with no spaces (letters, digits, - _ + / = and so on)",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Whether `presented` is this token, compared in **constant time**.
+    ///
+    /// `==` on strings stops at the first byte that differs, so how long it
+    /// takes reveals how much of a guess was right; an attacker measuring
+    /// response times could recover a token byte by byte. `ct_eq` from the
+    /// `subtle` crate always looks at every byte. (It returns early only when
+    /// the lengths differ, which reveals the length but nothing about the
+    /// token itself.) Its `Choice` result converts to `bool` with `.into()`.
+    pub fn matches(&self, presented: &str) -> bool {
+        use subtle::ConstantTimeEq;
+        self.0.as_bytes().ct_eq(presented.as_bytes()).into()
+    }
+
+    /// A token from a literal, for tests in other modules (the field is
+    /// private to this one). `cfg(all(...))`: only in test builds *with* the
+    /// `http` feature, the only ones that use it.
+    #[cfg(all(test, feature = "http"))]
+    pub(crate) fn for_tests(value: &str) -> BearerToken {
+        BearerToken(value.to_string())
+    }
+}
+
+impl fmt::Debug for BearerToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("BearerToken(<redacted>)")
+    }
+}
+
+// `PartialEq` by hand too, so even comparing two `BearerToken`s (as `Config`'s
+// derived `PartialEq` does) goes through the constant-time check.
+impl PartialEq for BearerToken {
+    fn eq(&self, other: &Self) -> bool {
+        self.matches(&other.0)
     }
 }
 
@@ -119,10 +199,18 @@ impl Config {
         // `.map(AccessToken)` uses the newtype's name as a function: a tuple
         // struct's name is also its constructor, `AccessToken(String)`.
         let access_token = value_for(ACCESS_TOKEN_VAR, &env, &file_values).map(AccessToken);
+        let bearer_token = value_for(BEARER_TOKEN_VAR, &env, &file_values).map(BearerToken);
+        // `Option::map(f).transpose()` again: parse the list only if it's set,
+        // then let `?` return a parse error.
+        let allowed_hosts = value_for(ALLOWED_HOSTS_VAR, &env, &file_values)
+            .map(|list| parse_allowed_hosts(&list))
+            .transpose()?;
 
         Ok(Config {
             api_url,
             access_token,
+            bearer_token,
+            allowed_hosts,
         })
     }
 }
@@ -145,6 +233,36 @@ fn value_for(
     };
     let value = value.trim().to_string();
     if value.is_empty() { None } else { Some(value) }
+}
+
+/// Parses `MCP_ALLOWED_HOSTS`: comma-separated hostnames or `host:port`,
+/// such as `abc123.execute-api.us-east-1.amazonaws.com`. They're compared
+/// with the `Host` header, so no scheme (`https://`) or path.
+fn parse_allowed_hosts(list: &str) -> Result<Vec<String>, Error> {
+    let mut hosts = Vec::new();
+    for (index, entry) in list.split(',').enumerate() {
+        let host = entry.trim().to_ascii_lowercase();
+        let problem = if host.is_empty() {
+            Some("is empty")
+        } else if host.contains("://") || host.contains('/') {
+            Some("must be a host name or host:port, without https:// or a path")
+        } else if !host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '[' | ']'))
+        {
+            Some("must contain only letters, digits, '.', '-', ':' and IPv6 brackets")
+        } else {
+            None
+        };
+        // `if let Some(x) = …` runs the block only when there's a problem.
+        if let Some(problem) = problem {
+            return Err(Error::Config {
+                problem: format!("{ALLOWED_HOSTS_VAR} entry {} {problem}", index + 1),
+            });
+        }
+        hosts.push(host);
+    }
+    Ok(hosts)
 }
 
 /// Parses `.env` text: `KEY=VALUE` lines, `#` comments and blank lines.
@@ -371,5 +489,70 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert_eq!(err, "configuration problem: .env line 1: key is required");
+    }
+
+    #[test]
+    fn http_settings_load_from_the_same_sources() {
+        let config = Config::from_sources(
+            env_of(&[("MCP_ALLOWED_HOSTS", " API.example.com, localhost:8787 ")]),
+            Some("MCP_BEARER_TOKEN=from-dotenv-0123456789abcdef0123456789\n"),
+        )
+        .unwrap();
+        assert_eq!(
+            config.allowed_hosts,
+            Some(vec![
+                "api.example.com".to_string(),
+                "localhost:8787".to_string()
+            ])
+        );
+        let token = config.bearer_token.unwrap();
+        assert!(token.matches("from-dotenv-0123456789abcdef0123456789"));
+        assert!(!token.matches("from-dotenv-0123456789abcdef012345678X"));
+        assert!(!token.matches(""));
+
+        let defaults = Config::from_sources(no_env(), None).unwrap();
+        assert_eq!(defaults.bearer_token, None);
+        assert_eq!(defaults.allowed_hosts, None);
+    }
+
+    #[test]
+    fn the_bearer_token_is_never_printed() {
+        let config = Config::from_sources(
+            env_of(&[("MCP_BEARER_TOKEN", "super-secret-token-0123456789abcdef")]),
+            None,
+        )
+        .unwrap();
+        let debug = format!("{config:?}");
+        assert!(!debug.contains("super-secret"), "{debug}");
+        assert!(debug.contains("BearerToken(<redacted>)"), "{debug}");
+    }
+
+    #[test]
+    fn bearer_token_rules() {
+        assert!(BearerToken("a".repeat(32)).check().is_ok());
+        let short = BearerToken("a".repeat(31)).check().unwrap_err().to_string();
+        assert!(short.contains("at least 32 characters"), "{short}");
+        let spaced = BearerToken(format!("{} x", "a".repeat(32)))
+            .check()
+            .unwrap_err();
+        assert!(spaced.to_string().contains("no spaces"), "{spaced}");
+        // Messages never include the token.
+        assert!(!short.contains(&"a".repeat(31)));
+    }
+
+    #[test]
+    fn allowed_hosts_must_be_bare_host_names() {
+        let error = |list: &str| {
+            Config::from_sources(env_of(&[("MCP_ALLOWED_HOSTS", list)]), None)
+                .unwrap_err()
+                .to_string()
+        };
+        assert_eq!(
+            error("api.example.com, https://api.example.com"),
+            "configuration problem: MCP_ALLOWED_HOSTS entry 2 must be a host name or host:port, without https:// or a path"
+        );
+        assert!(error("api.example.com/mcp").contains("entry 1 must be a host name"));
+        assert!(error("a.example.com,,b.example.com").contains("entry 2 is empty"));
+        assert!(error("bad host").contains("entry 1 must contain only"));
     }
 }

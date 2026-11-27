@@ -41,7 +41,7 @@ cargo run
 - **No data at rest:** don't add storage, caches or files that hold plans.
 - **No plan contents in logs or errors:** log tool names, timings, counts and error kinds only. Never amounts, names or tokens.
 - **stdout belongs to the MCP protocol** once the stdio server exists (Step 09); logs go to stderr.
-- Secrets (`FINANCIALS_ACCESS_TOKEN`, later `MCP_BEARER_TOKEN`) come from the environment or a local `.env`, are never printed (redact them in `Debug`), and are never committed.
+- Secrets (`FINANCIALS_ACCESS_TOKEN` and `MCP_BEARER_TOKEN`) come from the environment or a local `.env`, are never printed (redact them in `Debug`), are compared in constant time (`BearerToken::matches`), and are never committed.
 - Ask for the narrowest access and dependencies a step needs; new dependencies should be justified in the PR and must pass `cargo deny check` (`deny.toml`). Never add an advisory to `ignore` without a reason and a revisit date.
 
 ## Public repo rules

@@ -185,6 +185,34 @@ fn serve_one_failing_call(log_level: &str) -> String {
     stderr
 }
 
+/// The token the HTTP tests start the server with.
+#[cfg(feature = "http")]
+const HTTP_TOKEN: &str = "integration-test-token-0123456789abcdef";
+
+/// `serve --http` with no token refuses to start, before listening.
+#[cfg(feature = "http")]
+#[test]
+fn serve_http_refuses_to_start_without_a_token() {
+    let workdir = tempfile::tempdir().unwrap();
+    let output = Command::new(BINARY)
+        .args(["serve", "--http", "--listen", "127.0.0.1:0"])
+        .current_dir(workdir.path())
+        .env_remove("MCP_BEARER_TOKEN")
+        .env_remove("FINANCIALS_API_URL")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("MCP_BEARER_TOKEN is required for serve --http"),
+        "{stderr}"
+    );
+    assert!(
+        !stderr.contains("serving MCP"),
+        "it never started: {stderr}"
+    );
+}
+
 /// `serve --http` with the real binary: it picks a free port (`:0`), says
 /// which in its startup log line, and answers MCP over HTTP. Only built with
 /// the `http` feature.
@@ -199,6 +227,8 @@ async fn serve_http_answers_mcp_over_http_and_logs_to_stderr() {
         .current_dir(workdir.path())
         // Nothing listens on port 9, so a projection fails fast as `api`.
         .env("FINANCIALS_API_URL", "http://127.0.0.1:9")
+        .env("MCP_BEARER_TOKEN", HTTP_TOKEN)
+        .env_remove("MCP_ALLOWED_HOSTS")
         .env_remove("FINANCIALS_ACCESS_TOKEN")
         .env_remove("FINANCIALS_MCP_LOG")
         .stdin(Stdio::null())
@@ -227,9 +257,19 @@ async fn serve_http_answers_mcp_over_http_and_logs_to_stderr() {
         .expect("a startup line with the listen address");
     let url = format!("http://{address}/mcp");
 
+    // Without the token, nothing gets through.
+    let unauthorized = reqwest::Client::new()
+        .post(&url)
+        .body("{}")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unauthorized.status(), 401);
+
     let post = |body: String| {
         reqwest::Client::new()
             .post(&url)
+            .bearer_auth(HTTP_TOKEN)
             .header("Content-Type", "application/json")
             .header("Accept", "application/json, text/event-stream")
             .body(body)
@@ -264,7 +304,8 @@ async fn serve_http_answers_mcp_over_http_and_logs_to_stderr() {
     assert!(log.contains("serving MCP over HTTP at /mcp"), "{log}");
     assert!(log.contains(r#"tool_call{tool="run_projection"}"#), "{log}");
     assert!(log.contains(r#"error="api""#), "{log}");
-    for private in ["Person A", "Example", "person-a", "30000000"] {
+    assert!(log.contains("request rejected: auth_failed"), "{log}");
+    for private in ["Person A", "Example", "person-a", "30000000", HTTP_TOKEN] {
         assert!(
             !log.contains(private),
             "stderr contains {private:?}:\n{log}"

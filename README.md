@@ -18,7 +18,7 @@ This is also a **learning project**, built one reviewable step at a time as a fi
 
 ## Status
 
-Steps 1–19 are complete: five tools over stdio for Claude Desktop and Claude Code, and over HTTP on this machine (`serve --http`).
+Steps 1–20 are complete: five tools over stdio for Claude Desktop and Claude Code, and over HTTP (`serve --http`) with a required bearer token, an allowed-hosts list and request limits.
 
 | Tool | Answers |
 |---|---|
@@ -28,7 +28,7 @@ Steps 1–19 are complete: five tools over stdio for Claude Desktop and Claude C
 | `find_max_spending` | "What's the most we can spend and still have $200k left?" |
 | `withdrawal_order_options` | "Which account should we draw from first?" |
 
-**Next:** Steps 20–22 add a bearer token and limits, then host the HTTP server on AWS Lambda, so Claude can use the tools from any device. See the [plan](docs/plans/financials-mcp-learning-plan.md#step-20--bearer-token-auth-and-request-limits).
+**Next:** Steps 21–22 package the HTTP server for AWS Lambda and deploy it, so Claude can use the tools from any device. See the [plan](docs/plans/financials-mcp-learning-plan.md#step-21--lambda-packaging-with-cargo-lambda).
 
 ## Requirements
 
@@ -52,6 +52,8 @@ Settings come from the process environment, then a local `.env` file (gitignored
 | `FINANCIALS_API_URL` | `http://localhost:8080` | Base URL of financials-api. `http://` is only allowed for `localhost`; other hosts need `https://`. |
 | `FINANCIALS_ACCESS_TOKEN` | *(none)* | Sent as `X-Financials-Access-Token` when set. Never printed. |
 | `FINANCIALS_MCP_LOG` | `info` | Log level for `serve`: `error`, `warn`, `info`, `debug`, `trace` or `off`. Environment only (not `.env`). See [Logs](#logs). |
+| `MCP_BEARER_TOKEN` | *(none)* | Required for `serve --http`: the secret clients send as `Authorization: Bearer <token>`. At least 32 printable characters, no spaces. Never printed. |
+| `MCP_ALLOWED_HOSTS` | loopback | For `serve --http`: comma-separated hostnames (or `host:port`) accepted in the `Host` header, such as the API's domain once hosted. No `https://` or path. |
 
 A variable set in the environment wins over `.env`, even when it's empty (empty means "use the default").
 
@@ -101,15 +103,31 @@ Add `--scope user` to make it available in every project (the default scope is t
 
 ### Over HTTP, on this machine
 
-`financials-mcp serve --http` serves the same tools at `http://127.0.0.1:8787/mcp` using MCP's Streamable HTTP transport, in stateless mode (no sessions; each request stands alone). Start it yourself, with settings in the environment or a `.env` in the folder you run it from:
+`financials-mcp serve --http` serves the same tools at `http://127.0.0.1:8787/mcp` using MCP's Streamable HTTP transport, in stateless mode (no sessions; each request stands alone). It's locked:
+
+- **A bearer token is required.** The server won't start without `MCP_BEARER_TOKEN` (at least 32 characters), and every request must send `Authorization: Bearer <token>`. Anything else gets `401`. The comparison runs in constant time, and the token never appears in logs.
+- **Only allowed hosts.** Requests must be addressed to a host in `MCP_ALLOWED_HOSTS`, by default `localhost`, `127.0.0.1` or `::1`. Other `Host` headers get `403`, which blocks DNS-rebinding attacks from web pages.
+- **Limits.** Request bodies over 1 MiB get `413`, and any tool call running past 25 seconds is stopped with a tool error (on stdio too).
+
+Generate a token once and keep it somewhere safe, such as your `.env`. Either command prints a random 44-character token:
+
+```powershell
+# PowerShell 7
+[Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+# or, with OpenSSL (included with Git for Windows)
+openssl rand -base64 32
+```
+
+Then start the server and connect Claude Code with the same token:
 
 ```powershell
 $env:FINANCIALS_API_URL="http://localhost:8080"
+$env:MCP_BEARER_TOKEN="<your token>"
 .\target\release\financials-mcp.exe serve --http                         # or --listen 127.0.0.1:9000
-claude mcp add --transport http financials-http http://127.0.0.1:8787/mcp
+claude mcp add --transport http financials-http http://127.0.0.1:8787/mcp --header "Authorization: Bearer <your token>"
 ```
 
-It accepts requests addressed to `localhost`, `127.0.0.1` or `::1` only (other `Host` headers get `403`, which blocks DNS-rebinding attacks from web pages), and there's no authentication yet, so keep it on loopback. Step 20 adds a bearer token before it's ever hosted. Ctrl+C stops it after requests in progress finish.
+Ctrl+C stops it after requests in progress finish. Steps 21–22 host the same server on AWS Lambda.
 
 Then attach or paste a plan (the financials-api `POST /projections` request body) and ask, for example:
 

@@ -18,7 +18,7 @@ You ──► Claude (Desktop or Code) ──MCP over stdio──► financials-
 There are two transports, carrying the same JSON-RPC messages to the same server:
 
 - **stdio:** the client starts `financials-mcp serve` as a child process and exchanges messages over its stdin and stdout, one per line. That's why nothing else may ever be printed to stdout while serving, and why logs go to stderr.
-- **Streamable HTTP** (`serve --http`, in [`http.rs`](../src/http.rs)): each message is a `POST /mcp`, answered with JSON. It's stateless: no sessions, and each request is handled by a fresh clone of the server (sharing one projector). rmcp provides the transport as a `tower::Service`, and axum routes requests to it. Steps 20–22 add auth and limits, then host it on AWS Lambda.
+- **Streamable HTTP** (`serve --http`, in [`http.rs`](../src/http.rs)): each message is a `POST /mcp`, answered with JSON. It's stateless: no sessions, and each request is handled by a fresh clone of the server (sharing one projector). rmcp provides the transport as a `tower::Service`, and axum routes requests to it. It's locked: every request needs `Authorization: Bearer <MCP_BEARER_TOKEN>` (checked in constant time by middleware, before the body is read), the `Host` header must be on the allowed list, and bodies are capped at 1 MiB. Steps 21–22 host it on AWS Lambda.
 
 ## Modules
 
@@ -28,7 +28,7 @@ There are two transports, carrying the same JSON-RPC messages to the same server
 | [`main.rs`](../src/main.rs) | The executable: parses the command line, installs logging for `serve`, runs a command, turns errors into exit codes |
 | [`server.rs`](../src/server.rs) | The MCP server: the five tools, their arguments and results, and turning errors into tool results |
 | [`guidance.rs`](../src/guidance.rs) | The instructions sent to the model at `initialize` |
-| [`http.rs`](../src/http.rs) | `serve --http`: rmcp's Streamable HTTP service in stateless mode, routed by axum, with graceful shutdown (behind the `http` feature) |
+| [`http.rs`](../src/http.rs) | `serve --http`: rmcp's Streamable HTTP service in stateless mode, routed by axum, behind bearer-token middleware, with the allowed hosts, a body limit and graceful shutdown (behind the `http` feature) |
 | [`logging.rs`](../src/logging.rs) | stderr logging, the level filter, and `Counted`, a projector wrapper that counts and logs projections |
 | [`plan.rs`](../src/plan.rs) | The plan types (the API request), strict parsing, and pre-checks in the API's wording |
 | [`overrides.rs`](../src/overrides.rs) | The ten "what if" operations, applied in order to a copy of a plan |
@@ -39,7 +39,7 @@ There are two transports, carrying the same JSON-RPC messages to the same server
 | [`batch.rs`](../src/batch.rs) | `project_all`: runs many plans concurrently, at most 4 at once, results in input order |
 | [`projector.rs`](../src/projector.rs) | The `Projector` trait, `project_and_summarize`, and `FakeProjector` for tests |
 | [`api.rs`](../src/api.rs) | `ApiProjector`: the financials-api client, with timeouts, size caps and status mapping |
-| [`config.rs`](../src/config.rs) | Settings from the environment and `.env`; the access token is redacted in `Debug` |
+| [`config.rs`](../src/config.rs) | Settings from the environment and `.env`; the access and bearer tokens are redacted in `Debug`, and the bearer token is compared in constant time |
 | [`projection.rs`](../src/projection.rs) | The API response types, parsed leniently |
 | [`summary.rs`](../src/summary.rs) | `summarize`: projection to compact summary; `Headline` for batch results |
 | [`error.rs`](../src/error.rs) | The `Error` enum, value-free messages, and `kind()` for logs |
@@ -50,7 +50,7 @@ There are two transports, carrying the same JSON-RPC messages to the same server
 Here's what happens when the model calls `compare_scenarios` with a plan and two scenarios.
 
 1. **rmcp receives the request.** The `#[tool_router]` macro on `FinancialsServer` generated the routing, so `tools/call` with `name: "compare_scenarios"` reaches the `compare_scenarios` method, with the arguments as `CompareScenariosArgs`.
-2. **The logging wrapper starts.** Every tool goes through `FinancialsServer::call`. It wraps the shared projector in a fresh `Counted` for this call, starts a `tool_call{tool="compare_scenarios"}` span, and starts a timer.
+2. **The logging wrapper starts.** Every tool goes through `FinancialsServer::call`. It wraps the shared projector in a fresh `Counted` for this call, starts a `tool_call{tool="compare_scenarios"}` span, and runs the work under a 25-second limit (`tokio::time::timeout`), so a call that runs too long becomes a tool error.
 3. **The arguments are parsed.** `plan` and `scenarios` arrive as raw JSON (`serde_json::Value`) and are parsed by `Plan::from_json` and `Scenario::list_from_value`. That way a wrong field becomes a readable tool error that names the location but never the value.
 4. **The plans are prepared.** `compare::compare_scenarios` checks the base plan (`Plan::check`), then applies each scenario's overrides to its own copy (`apply_overrides`). A scenario whose overrides don't apply keeps its error and is never projected.
 5. **The batch runs.** `batch::project_all` spawns one task per plan into a `JoinSet`. Each task waits for one of 4 `Semaphore` permits, then calls `project_and_summarize`:
@@ -74,6 +74,7 @@ The other batch tools follow the same path with different preparation: `sweep` b
 - **No plan contents anywhere but the conversation.** Error messages name locations and rules, never values. Logs record the tool, duration, projection count and error *kind*. The log level can't be raised for dependencies, because the MCP library logs full requests at `debug`.
 - **Generic over the projector.** Every tool works with any `Projector`: `ApiProjector` in production, `FakeProjector` in tests, and `Counted<…>` wrapping either for logging. Generics are resolved at compile time, so this costs nothing at runtime.
 - **Concurrency without threads.** The server runs on tokio's single-threaded runtime, over HTTP too. Projections spend nearly all their time waiting on the network, so many requests in flight on one thread is enough.
+- **Locked before it can be hosted.** `serve --http` refuses to start without a bearer token of at least 32 characters. Middleware rejects any request without it (`401`) before rmcp reads the body. The token is compared in constant time, and rejections log a fixed reason, never the header.
 - **Optional transports are Cargo features.** The HTTP transport (and axum) is the default `http` feature. `cargo build --no-default-features` leaves it out entirely, and CI tests both builds.
 
 ## How an agent uses the tools
@@ -131,7 +132,7 @@ The model never estimated a number: each one came from a tool. It asked about go
 
 ## Testing strategy
 
-Every behavior has a deterministic test, and **no test calls the real financials-api or a model**. There are 209 tests (183 without the `http` feature):
+Every behavior has a deterministic test, and **no test calls the real financials-api or a model**. There are 220 tests (188 without the `http` feature):
 
 | Kind | Where | What they cover |
 |---|---|---|
@@ -139,7 +140,8 @@ Every behavior has a deterministic test, and **no test calls the real financials
 | Fake projector | `FakeProjector` in [`projector.rs`](../src/projector.rs) | Every tool's logic, with scripted or computed projections, plus counting and concurrency fakes in `batch.rs` |
 | Mock HTTP server | [`wiremock`](https://crates.io/crates/wiremock) in [`api.rs`](../src/api.rs) and the logging test | The real HTTP client: status codes, timeouts, redirects, size caps, the token header, and that the token never reaches logs |
 | In-process MCP client | `server.rs` tests, over `tokio::io::duplex` **and** over HTTP on a local port | Tool listing, schemas, annotations, results and tool errors, through rmcp exactly as a client sees them. A `macro_rules!` macro runs each test once per transport |
-| HTTP transport | `http.rs` tests | Stateless requests with no session id, JSON responses, the `Host` check, unknown paths, graceful shutdown with a call in progress |
+| HTTP transport | `http.rs` tests | The bearer token (missing, malformed, wrong, a prefix, one character too many, a case-insensitive scheme), startup without a token, the `Host` allow list, the 1 MiB limit, stateless requests, graceful shutdown with a call in progress, and logs without the token |
+| Paused time | `#[tokio::test(start_paused = true)]` in `server.rs` | The 25-second tool limit, which passes instantly and exactly |
 | The real binary | [`tests/cli.rs`](../tests/cli.rs), [`tests/serve.rs`](../tests/serve.rs) | Exit codes and help text, raw MCP over stdio and over HTTP (`--listen 127.0.0.1:0`), nothing on stdout but protocol, logs on stderr |
 | Fixtures | [`tests/fixtures/`](../tests/fixtures) | Two made-up plans and the real financials-api responses for them |
 | Docs | [`tests/docs.rs`](../tests/docs.rs) | Links and anchors in the docs resolve, and the docs list every tool, subcommand and setting |

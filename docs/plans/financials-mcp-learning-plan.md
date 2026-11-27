@@ -529,9 +529,9 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 ### Step 20 — Bearer-token auth and request limits
 
-- **Status:** Not started
+- **Status:** Completed
 - **Branch:** `step-20-http-auth-and-limits`
-- **Pull Request:** TBD
+- **Pull Request:** PR_LINK
 - **Concept:** A URL anyone can reach needs a lock. Before the server leaves your machine, every HTTP request must carry a long secret, and size and time limits cap what any one request can cost.
 - **Rust introduced:** tower middleware (layers that wrap a service), constant-time comparison (`subtle::ConstantTimeEq`) and why `==` on secrets leaks timing, reusing Step 04's redacted secret newtype, `tokio::time::timeout`, and paused time in tests (`tokio::time::pause`).
 - **Functionality:**
@@ -539,6 +539,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
   - `MCP_ALLOWED_HOSTS` lists the hostnames accepted in the `Host` header (default: loopback only).
   - A request body limit of 1 MiB (plans are a few KB), and a 25-second time limit per tool call, returned as a tool error (API Gateway's limit is 30 seconds).
   - Rejected requests log `auth_failed` (or the limit hit) with no token or header contents.
+  - As built: the body limit is rmcp's own (`with_max_request_body_bytes`), the time limit applies to every tool call (stdio too), and the middleware is `axum::middleware::from_fn_with_state` (a tower layer). The bearer token is redacted like the access token, with a constant-time `PartialEq`.
 - **Tests:**
   - Missing, malformed, wrong and wrong-length tokens get `401`; the right token works.
   - Startup fails with a missing or short token.

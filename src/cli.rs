@@ -42,12 +42,22 @@ pub enum Command {
         /// Path to a plan JSON file (the POST /projections request body).
         plan: PathBuf,
     },
-    /// Start the MCP server: on stdin/stdout for an MCP client to launch, or
-    /// over HTTP with --http.
+    /// Start the MCP server for an MCP client.
     ///
     /// Reads FINANCIALS_API_URL and FINANCIALS_ACCESS_TOKEN from the
     /// environment or a local .env file. Logs go to stderr; set
     /// FINANCIALS_MCP_LOG to error, warn, info (default), debug, trace or off.
+    // A `///` line is shorthand for `#[doc = "..."]`, so `cfg_attr` can add
+    // documentation only when a feature is on: this paragraph is in `--help`
+    // only in builds that have `--http`.
+    #[cfg_attr(
+        feature = "http",
+        doc = "",
+        doc = "Serves on stdin/stdout by default, or over HTTP with --http. Then every \
+               request must send \"Authorization: Bearer <token>\" matching MCP_BEARER_TOKEN \
+               (required, at least 32 characters), and the Host header must be in \
+               MCP_ALLOWED_HOSTS (default: loopback only)."
+    )]
     Serve {
         // `#[cfg(feature = "http")]` on a field removes it from the program
         // when the feature is off, so `--http` doesn't exist in that build.
