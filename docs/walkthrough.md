@@ -283,7 +283,7 @@ To follow along, read each step's files in order. Explanations of Rust concepts 
 
 ### Step 19: Streamable HTTP transport
 
-PR_LINK
+[PR #21](https://github.com/zachfire9/financials-mcp/pull/21)
 
 - **Built:** `financials-mcp serve --http`, the same five tools at `http://127.0.0.1:8787/mcp` over MCP's Streamable HTTP transport, stateless, with graceful shutdown on Ctrl+C. It's an optional `http` Cargo feature, on by default.
 - **Look at:** [`src/http.rs`](../src/http.rs), the `on_every_transport!` macro in [`src/server.rs`](../src/server.rs)'s tests, and `serve_http` in [`src/main.rs`](../src/main.rs).

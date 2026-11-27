@@ -509,7 +509,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-19-streamable-http`
-- **Pull Request:** PR_LINK
+- **Pull Request:** [#21](https://github.com/zachfire9/financials-mcp/pull/21)
 - **Concept:** The same server over a second transport. MCP over HTTP lets clients that can't start a local process (Claude on the web and on a phone) reach the tools. Stateless mode suits Lambda, where any request may land on a fresh instance.
 - **Rust introduced:** Cargo features (an `http` feature, on by default, and `#[cfg(feature = "http")]`), `tower::Service` (the request-to-response abstraction that rmcp, axum and Lambda share), axum routing, graceful shutdown with `tokio::signal`, `#[non_exhaustive]` config structs, and `macro_rules!` for running tests over both transports. (The multi-threaded runtime turned out not to be needed: requests mostly wait on the network, so the single-threaded runtime serves them concurrently.)
 - **Functionality:**
