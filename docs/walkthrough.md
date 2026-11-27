@@ -317,7 +317,7 @@ To follow along, read each step's files in order. Explanations of Rust concepts 
 
 ### Step 21: Lambda packaging
 
-PR_LINK
+[PR #23](https://github.com/zachfire9/financials-mcp/pull/23)
 
 - **Built:** a second executable, `lambda`, that runs the same locked router on AWS Lambda through `lambda_http`.
   - It's behind a `lambda` Cargo feature, off by default.

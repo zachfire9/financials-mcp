@@ -554,7 +554,7 @@ Every tool reports projections as a compact summary computed from the API's `Pro
 
 - **Status:** Completed
 - **Branch:** `step-21-lambda-packaging`
-- **Pull Request:** PR_LINK
+- **Pull Request:** [#23](https://github.com/zachfire9/financials-mcp/pull/23)
 - **Concept:** Lambda runs a function per request, with no long-lived server process. The tower service from Steps 19–20 plugs into Lambda through an adapter, so the tools, auth and limits are identical to local HTTP.
 - **Rust introduced:** `lambda_http` (API Gateway events as ordinary `http` requests), work done once per cold start versus per request, a second binary (`src/bin/lambda.rs`) behind a `lambda` feature, cross-compiling to `aarch64` with `cargo-lambda`, and release-profile settings (`lto`, `strip`) for size and cold-start time.
 - **Functionality:**
